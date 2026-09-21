@@ -1,0 +1,49 @@
+%% 类图（节选）：户型展示 + 评估域协作（spec 002/004；报告"系统设计→面向对象视图"）
+classDiagram
+  class Project { +Long id  +String name  +String district  +BigDecimal avgPrice  +Double lng  +Double lat }
+  class Building { +Long id  +Long projectId  +String code  +Integer totalFloor  +Integer unitsPerFloor  +Integer elevatorCount  +BigDecimal southOcclusion }
+  class HouseType {
+    +Long id  +Long projectId  +String code  +String name
+    +BigDecimal gfa  +BigDecimal privateArea  +Integer rooms  +Integer halls  +Integer baths
+    +String orientation  +BigDecimal bay  +BigDecimal depth  +BigDecimal ceilingHeight
+    +BigDecimal windowArea  +BigDecimal corridorRatio  +BigDecimal irrRatio
+    +Boolean nearRoad  +Boolean adjacentElevator
+    +String planSvgUrl  +String modelGlbUrl  +String panoUrl
+    +List~Room~ rooms
+  }
+  class Room { +String name  +RoomCategory category  +BigDecimal x  +BigDecimal y  +BigDecimal w  +BigDecimal h  +BigDecimal area  +String orientation  +BigDecimal windowArea  +List~Opening~ doors  +List~Opening~ windows }
+  class Opening { +String wall  +BigDecimal x  +BigDecimal width  +String swing }
+  class House { +Long buildingId  +Long houseTypeId  +String unitCode  +Integer floorNo  +String roomNo  +BigDecimal area  +BigDecimal unitPrice  +BigDecimal totalPrice  +SaleStatus saleStatus  +LocalDateTime lockExpireAt }
+  class Evaluation { +Long userId  +Long houseTypeId  +Long houseId  +Long setId  +String setVersion  +BigDecimal totalScore  +String level  +String detailJson }
+  class EvalRuleSet { +String name  +String version  +RuleStatus status  +String source  +Integer active  +List~EvalRule~ rules }
+  class EvalRule { +String dimensionCode  +String metricCode  +String operator  +BigDecimal internalWeight  +String tierJson  +String basis  +String suggestion }
+  class MetricContext { HouseType ht  List~Room~ rooms  House house  Building building  Project project  UserProfile profile }
+  class MetricCalculator { <<interface>> +String code()  +MetricResult calc(MetricContext) }
+  class MetricResult { +String code  +Double value  +Boolean ok  +String display  +Map~String,String~ inputs }
+  class ScoringEngine { +EvaluationResultVO score(EvaluationRequest) }
+  class ScoreAssembler { +EvalResult assemble(List~MetricResult~, RuleSetView, TemplateView) }
+  class TierMatcher { +Tier match(double v, List~Tier~ tiers) }
+  class RuleRepository { +RuleSetView active()  +RuleSetView load(long id)  +void invalidate() }
+  class EvaluationService { +EvaluationResultVO evaluate(EvaluateCmd, Long user)  +EvaluationSnapshotVO read(long id) }
+  class HouseTypeService { +PageResult~HouseTypeCardVO~ query(HouseTypeQuery)  +HouseTypeDetailVO detail(long id) }
+  class SaleStatus { AVAILABLE LOCKED RESERVED SOLD +boolean canNext(SaleStatus) }
+  class RuleStatus { DRAFT PUBLISHED OFFLINE }
+
+  Project "1" --> "0..*" Building
+  Project "1" --> "0..*" HouseType
+  Building "1" --> "0..*" House
+  HouseType "1" *--> "1..*" Room : 参数包
+  Room "1" *--> "0..*" Opening : 门/窗
+  HouseType "1" --> "0..*" House
+  HouseType "1" --> "0..*" Evaluation
+  EvalRuleSet "1" *--> "1..*" EvalRule
+  Evaluation --> EvalRuleSet : 按版本快照
+  EvaluationService --> ScoringEngine
+  ScoringEngine --> RuleRepository
+  ScoringEngine --> MetricCalculator
+  ScoringEngine --> ScoreAssembler
+  ScoreAssembler --> TierMatcher
+  MetricCalculator ..> MetricContext
+  MetricCalculator ..> MetricResult
+  House --> SaleStatus
+  EvalRuleSet --> RuleStatus

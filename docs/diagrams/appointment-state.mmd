@@ -1,0 +1,20 @@
+%% 状态图：预约看房单（spec 006 FR-93；转换矩阵见 plan 006 §2）
+stateDiagram-v2
+  [*] --> PENDING: 用户提交(时段容量事务占位)
+  PENDING --> CONFIRMED: 顾问确认(FR-96)
+  PENDING --> CANCELED: 用户取消(需原因) / 顾问拒绝
+  PENDING --> PENDING: 用户改期(重新占位, 回到待确认)
+  CONFIRMED --> ARRIVED: 到访登记(手机号后4位或意向单号)
+  CONFIRMED --> CANCELED: 用户取消 / 顾问取消
+  CONFIRMED --> CONFIRMED: 改期(重走容量校验)
+  ARRIVED --> COMPLETED: 顾问填跟进结果(关注维度回写画像)
+  ARRIVED --> CANCELED: 不允许(40931)
+  COMPLETED --> CANCELED: 不允许(40931)
+  COMPLETED --> [*]
+  CANCELED --> [*]
+  note right of CONFIRMED
+    提醒任务(10min 一次)：
+    提前 1 天 → notified_at
+    提前 2 小时 → reminded_2h_at
+    条件 UPDATE 保证幂等(AC-53)
+  end note

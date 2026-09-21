@@ -1,0 +1,20 @@
+%% 状态图：房源销控状态（spec 003 FR-39；报告 docs/02 §6.3、docs/04 §6.1）
+%% 非法流转在 HouseStatus.canNext() 集中拒绝，返回 40911
+stateDiagram-v2
+  [*] --> AVAILABLE: 管理员导入销控
+  AVAILABLE --> LOCKED: 用户模拟选房(行锁成功, TTL 10min)
+  LOCKED --> LOCKED: 本人续期(≤2 次, 累计≤20min)
+  LOCKED --> AVAILABLE: 用户取消 / 超时回收(LockExpireJob)
+  LOCKED --> RESERVED: 转意向单(24h 预留)
+  RESERVED --> AVAILABLE: 24h 超时(IntentionExpireJob)
+  RESERVED --> SOLD: 预约成交登记(同事务写审计)
+  AVAILABLE --> SOLD: 管理员置已售(原因必填)
+  LOCKED --> SOLD: 管理员置已售(强制释放他人锁+通知)
+  SOLD --> [*]
+  note right of LOCKED
+    并发三重保护：
+    1 SELECT ... FOR UPDATE
+    2 UPDATE ... WHERE sale_status='AVAILABLE'
+    3 uk_lock_house 唯一索引
+    → 20 并发只 1 成功 (TC-P-01)
+  end note

@@ -1,0 +1,31 @@
+{
+  "name": "haofangzi-frontend",
+  "private": true,
+  "version": "1.0.0",
+  "type": "module",
+  "description": "肇庆好房子在线选房与户型智能评估 · 前端骨架（Vue3 + Vite + TS）",
+  "scripts": {
+    "dev": "vite",
+    "build": "vue-tsc --noEmit && vite build",
+    "preview": "vite preview",
+    "test": "vitest run",
+    "gen:api": "openapi-typescript ../specs/000-program/contracts/openapi.yaml -o src/api/schema.d.ts"
+  },
+  "dependencies": {
+    "axios": "^1.6.8",
+    "echarts": "^5.5.0",
+    "element-plus": "^2.7.0",
+    "pinia": "^2.1.7",
+    "three": "^0.163.0",
+    "vue": "^3.4.21",
+    "vue-router": "^4.3.0"
+  },
+  "devDependencies": {
+    "@vitejs/plugin-vue": "^5.0.4",
+    "openapi-typescript": "^6.7.6",
+    "typescript": "^5.4.5",
+    "vite": "^5.2.8",
+    "vitest": "^1.5.0",
+    "vue-tsc": "^2.0.13"
+  }
+}

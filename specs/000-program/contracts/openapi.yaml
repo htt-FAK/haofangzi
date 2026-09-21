@@ -1,0 +1,255 @@
+openapi: 3.0.3
+info:
+  title: 肇庆市"好房子"在线选房与户型智能评估系统 API
+  version: 1.0.0
+  description: |
+    全局契约（先于实现，宪法第二条 5）。所有响应包装为 `ApiResponse`：
+    `{code, message, traceId, data}`；`code=0` 成功，错误码见 specs/000 + plan.md §3.1。
+    鉴权：`Authorization: Bearer <JWT>`；`/api/admin/**` 需 ADMIN/CONSULTANT，写接口均需鉴权（NFR-06）。
+    分页：`page`（1 起）、`size`（≤100，默认 20）；排序 `sort=totalPrice,asc`。
+servers:
+  - url: http://localhost:8080/api
+    description: 本地
+tags:
+  - { name: auth, description: "001 认证与画像" }
+  - { name: house-type, description: "002 户型展示" }
+  - { name: house, description: "003 房源与筛选" }
+  - { name: selection, description: "003 模拟选房/收藏" }
+  - { name: evaluation, description: "004 规则打分" }
+  - { name: report, description: "005 对比报告" }
+  - { name: appointment, description: "006 预约看房" }
+  - { name: ai, description: "007 AI 能力网关" }
+
+paths:
+  /auth/register:
+    post:
+      tags: [auth]
+      summary: 手机号注册
+      requestBody: { required: true, content: { application/json: { schema: { $ref: "#/components/schemas/RegisterCmd" } } } }
+      responses: { "200": { description: "成功 code=0" }, "400": { description: "40011 图形码错误 / 40012 口令强度不足 / 40913 手机号已注册" } }
+  /auth/login:
+    post:
+      tags: [auth]
+      summary: 口令或短信验证码登录
+      requestBody: { required: true, content: { application/json: { schema: { type: object, properties: { phone: { type: string }, password: { type: string }, smsCode: { type: string }, captcha: { type: string }, captchaId: { type: string } } } } } }
+      responses: { "200": { description: "`{token, expiresIn, user:UserVO}`", content: { application/json: { schema: { $ref: "#/components/schemas/ApiResponse" } } } }, "400": { description: "40305 账号锁定（含 lockSeconds）/ 40301 口令错误" } }
+  /auth/refresh: { post: { tags: [auth], summary: 静默续期（一次）, responses: { "200": { description: OK } } } }
+  /auth/logout: { post: { tags: [auth], summary: 退出, responses: { "200": { description: OK } } } }
+  /users/me:
+    get: { tags: [auth], security: [ { bearer: [] } ], summary: 当前用户（含 profileCompleteness）, responses: { "200": { description: UserVO } } }
+  /users/me/profile:
+    put:
+      tags: [auth]
+      security: [ { bearer: [] } ]
+      summary: 保存购房画像（FR-04）
+      requestBody: { required: true, content: { application/json: { schema: { $ref: "#/components/schemas/ProfileCmd" } } } }
+      responses: { "200": { description: "返回完整度百分比 data.completeness" }, "400": { description: "40014 预算区间非法（min>max）" } }
+  /admin/users:
+    get: { tags: [auth], security: [ { bearer: [] } ], summary: 用户分页（ADMIN）, parameters: [ { $ref: "#/components/parameters/page" }, { $ref: "#/components/parameters/size" }, { name: role, in: query, schema: { type: string } } ], responses: { "200": { description: PageUserVO } } }
+  /admin/users/{id}/status:
+    patch: { tags: [auth], security: [ { bearer: [] } ], summary: 停用/启用（FR-07）, parameters: [ { name: id, in: path, schema: { type: integer, format: int64 } } ], responses: { "200": { description: OK }, "400": { description: "40302 越权（BUYER 调用时）" } } }
+
+  /house-types:
+    get:
+      tags: [house-type]
+      summary: 户型分页与筛选（FR-11）
+      parameters:
+        - { $ref: "#/components/parameters/page" }
+        - { name: projectId, in: query, schema: { type: integer, format: int64 } }
+        - { name: rooms, in: query, schema: { type: integer } }
+        - { name: minArea, in: query, schema: { type: number } }
+        - { name: maxArea, in: query, schema: { type: number } }
+        - { name: orientation, in: query, schema: { type: string, enum: [S, SE, SW, N, E, W, NS] } }
+        - { name: maxTotalPrice, in: query, schema: { type: number } }
+        - { name: sort, in: query, schema: { type: string, example: "score,desc" } }
+      responses:
+        "200":
+          description: "Page<HouseTypeCardVO>，含 latestScore/level 徽标字段"
+          content: { application/json: { schema: { $ref: "#/components/schemas/ApiResponse" } } }
+  /house-types/{id}:
+    get:
+      tags: [house-type]
+      summary: 户型详情（几何 + 参数 + 房间构件，满足 geometry.schema.json）
+      parameters: [ { name: id, in: path, required: true, schema: { type: integer, format: int64 } } ]
+      responses: { "200": { description: HouseTypeDetailVO }, "400": { description: "40420 户型不存在" } }
+  /house-types/{id}/rooms:
+    get: { tags: [house-type], summary: 房间构件列表, parameters: [ { name: id, in: path, schema: { type: integer, format: int64 } } ], responses: { "200": { description: List<RoomVO> } } }
+  /buildings/{id}/section:
+    get: { tags: [house-type], summary: 楼栋剖面与南向遮挡（FR-20）, parameters: [ { name: id, in: path, schema: { type: integer, format: int64 } } ], responses: { "200": { description: BuildingSectionVO } } }
+  /media/sign:
+    get: { tags: [house-type], summary: 静态资源签名 URL（FR-21）, parameters: [ { name: url, in: query, required: true, schema: { type: string } } ], responses: { "200": { description: "data: 签名地址，600s 有效" } } }
+  /admin/house-types:
+    post: { tags: [house-type], security: [ { bearer: [] } ], summary: 新增/导入户型与房间构件（FR-22）, responses: { "200": { description: "data.id" }, "400": { description: "40012 房间越界（含 roomIndex）/ 40015 面积与坐标不一致" } } }
+
+  /houses:
+    get:
+      tags: [house]
+      summary: 房源销控列表（FR-31）
+      parameters: [ { name: buildingId, in: query, schema: { type: integer, format: int64 } }, { name: houseTypeId, in: query, schema: { type: integer, format: int64 } }, { name: minFloor, in: query, schema: { type: integer } }, { name: saleStatus, in: query, schema: { type: string, enum: [AVAILABLE, LOCKED, RESERVED, SOLD] } }, { $ref: "#/components/parameters/page" } ]
+      responses: { "200": { description: "Page<HouseVO>，LOCKED 时含 lockRemainSeconds" } }
+  /houses/{id}:
+    get: { tags: [house], summary: 房源详情, parameters: [ { name: id, in: path, schema: { type: integer, format: int64 } } ], responses: { "200": { description: HouseDetailVO }, "400": { description: "40410 房源不存在" } } }
+  /buildings/{id}/floors:
+    get: { tags: [house], summary: 楼层矩阵（FR-32）, parameters: [ { name: id, in: path, schema: { type: integer, format: int64 } } ], responses: { "200": { description: "data:[{floorNo, houses:[{id,roomNo,saleStatus,totalPrice}]}]" } } }
+  /admin/houses/import:
+    post: { tags: [house], security: [ { bearer: [] } ], summary: 销控 Excel 批量导入（FR-40）, requestBody: { content: { multipart/form-data: { schema: { type: object, properties: { file: { type: string, format: binary } } } } } }, responses: { "200": { description: "data:{successCount, errorFileUrl}" } } }
+
+  /favorites:
+    get: { tags: [selection], security: [ { bearer: [] } ], summary: 我的收藏（户型/房源）, parameters: [ { name: type, in: query, schema: { type: string, enum: [HOUSE_TYPE, HOUSE] } } ], responses: { "200": { description: List<FavoriteVO> } } }
+    post: { tags: [selection], security: [ { bearer: [] } ], summary: 新增收藏（幂等，上限 50）, requestBody: { content: { application/json: { schema: { type: object, required: [targetType, targetId], properties: { targetType: { type: string }, targetId: { type: integer, format: int64 } } } } } }, responses: { "200": { description: OK }, "400": { description: "40914 超过收藏上限" } } }
+  /favorites/{id}:
+    delete: { tags: [selection], security: [ { bearer: [] } ], summary: 取消收藏, parameters: [ { name: id, in: path, schema: { type: integer, format: int64 } } ], responses: { "200": { description: OK } } }
+  /selection/locks:
+    post:
+      tags: [selection]
+      security: [ { bearer: [] } ]
+      summary: 模拟选房（锁定房源，FR-34/35，TTL 10min）
+      requestBody: { required: true, content: { application/json: { schema: { type: object, required: [houseId, confirm], properties: { houseId: { type: integer, format: int64 }, confirm: { type: boolean, description: "必须为 true，否则 40013" } } } } } }
+      responses:
+        "200": { description: "data:{lockNo,intentionNo,expireAt,renewCount}" }
+        "409": { description: "40910 已被他人锁定（data.alternatives ≥3 条同户型备选）/ 40911 已售或状态不可选" }
+  /selection/locks/current:
+    get: { tags: [selection], security: [ { bearer: [] } ], summary: 我的有效锁（AC-22 倒计时基准）, responses: { "200": { description: "data: null 或 LockVO" } } }
+  /selection/locks/{no}/renew:
+    post: { tags: [selection], security: [ { bearer: [] } ], summary: 续期（≤2 次，总计 ≤20min）, parameters: [ { name: no, in: path, schema: { type: string } } ], responses: { "200": { description: "data:{expireAt}" }, "400": { description: "40912 续期次数用尽" } } }
+  /selection/locks/{no}/cancel:
+    post: { tags: [selection], security: [ { bearer: [] } ], summary: 取消锁定并释放房源, parameters: [ { name: no, in: path, schema: { type: string } } ], responses: { "200": { description: OK } } }
+  /selection/locks/{no}/convert:
+    post: { tags: [selection], security: [ { bearer: [] } ], summary: 转意向（LOCKED→RESERVED，24h）, parameters: [ { name: no, in: path, schema: { type: string } } ], responses: { "200": { description: "data:{intentionNo, expireAt}" } } }
+
+  /evaluations:
+    post:
+      tags: [evaluation]
+      security: [ { bearer: [] } ]
+      summary: 发起评估（FR-50），可匿名预览（不落库）需 query `preview=true`
+      parameters: [ { name: preview, in: query, schema: { type: boolean, default: false } } ]
+      requestBody: { required: true, content: { application/json: { schema: { $ref: "#/components/schemas/EvaluateCmd" } } } }
+      responses: { "200": { description: "EvaluationResultVO（total/level/dimensions[]/metrics[]/suggestions[]/setVersion）" } }
+    get: { tags: [evaluation], security: [ { bearer: [] } ], summary: 我的评估历史, parameters: [ { name: houseTypeId, in: query, schema: { type: integer, format: int64 } } ], responses: { "200": { description: Page<EvaluationBriefVO> } } }
+  /evaluations/{id}:
+    get: { tags: [evaluation], summary: 读取评测快照（不重算，AC-32）, parameters: [ { name: id, in: path, schema: { type: integer, format: int64 } } ], responses: { "200": { description: EvaluationSnapshotVO }, "400": { description: "40302 非本人记录" } } }
+  /house-types/{id}/evaluation/latest:
+    get: { tags: [evaluation], summary: 某户型最近一次评估（列表徽标复用）, parameters: [ { name: id, in: path, schema: { type: integer, format: int64 } } ], responses: { "200": { description: "data: EvaluationBriefVO | null" } } }
+  /evaluation-templates:
+    get: { tags: [evaluation], summary: 人群权重模板列表（FR-53）, responses: { "200": { description: "data:[{code,name,dimensions:[{code,weight}]}]" } } }
+  /admin/rule-sets:
+    get: { tags: [evaluation], security: [ { bearer: [] } ], summary: 规则集版本列表, responses: { "200": { description: List<RuleSetVO> } } }
+    post: { tags: [evaluation], security: [ { bearer: [] } ], summary: 新建 DRAFT 规则集（可复制自 ACTIVE / AI 草案）, responses: { "200": { description: "data.id" } } }
+  /admin/rule-sets/{id}:
+    put:
+      tags: [evaluation]
+      security: [ { bearer: [] } ]
+      summary: 保存权重与分档（仅 DRAFT 可写；Σweight≠1 拒绝）
+      parameters: [ { name: id, in: path, schema: { type: integer, format: int64 } } ]
+      requestBody: { content: { application/json: { schema: { type: object, description: "遵循 scoring-rule.schema.json" } } } }
+      responses: { "200": { description: OK }, "409": { description: "40920 权重之和校验失败（data.sum）/ 40921 规则集已发布只读" } }
+  /admin/rule-sets/{id}/try:
+    post: { tags: [evaluation], security: [ { bearer: [] } ], summary: 试算（给定 houseTypeId 返回分数，不落库）, parameters: [ { name: id, in: path, schema: { type: integer, format: int64 } } ], responses: { "200": { description: EvaluationResultVO } } }
+  /admin/rule-sets/{id}/publish:
+    post: { tags: [evaluation], security: [ { bearer: [] } ], summary: 发布并置 ACTIVE（AI 草案未人工确认时拒绝）, parameters: [ { name: id, in: path, schema: { type: integer, format: int64 } }, { name: confirmed, in: query, schema: { type: boolean } } ], responses: { "200": { description: "data:{version}" }, "400": { description: "40303 AI 草案未审阅 / 40920 权重非法" } } }
+
+  /compare-reports:
+    post: { tags: [report], security: [ { bearer: [] } ], summary: 生成对比报告（2-4 个户型，FR-70）, requestBody: { content: { application/json: { schema: { $ref: "#/components/schemas/CompareCmd" } } } }, responses: { "200": { description: ReportVO }, "400": { description: "40016 数量须为 2~4 / 40017 缺少评估记录（自动生成后再对比）" } } }
+    get: { tags: [report], security: [ { bearer: [] } ], summary: 我的报告列表, responses: { "200": { description: Page<ReportBriefVO> } } }
+  /compare-reports/{id}:
+    get: { tags: [report], security: [ { bearer: [] } ], summary: 报告详情（矩阵 + 结论）, parameters: [ { name: id, in: path, schema: { type: integer, format: int64 } } ], responses: { "200": { description: ReportVO } } }
+  /compare-reports/{id}/share:
+    post: { tags: [report], security: [ { bearer: [] } ], summary: 生成/刷新只读分享链接（NFR-07）, parameters: [ { name: id, in: path, schema: { type: integer, format: int64 } }, { name: days, in: query, schema: { type: integer, default: 7, maximum: 30 } } ], responses: { "200": { description: "data:{token,url,expireAt}" } } }
+  /compare-reports/{id}/export:
+    get: { tags: [report], security: [ { bearer: [] } ], summary: 导出 PDF（服务端渲染，含图表）, parameters: [ { name: id, in: path, schema: { type: integer, format: int64 } } ], responses: { "200": { description: application/pdf }, "400": { description: "50002 渲染失败，降级返回 HTML" } } }
+  /share/reports/{token}:
+    get: { tags: [report], summary: 免登录只读查看分享报告, parameters: [ { name: token, in: path, required: true, schema: { type: string } } ], responses: { "200": { description: ReportVO（脱敏，无手机号） }, "400": { description: "40304 链接过期或无效" } } }
+
+  /appointments:
+    post: { tags: [appointment], security: [ { bearer: [] } ], summary: 提交预约看房（FR-90）, requestBody: { content: { application/json: { schema: { $ref: "#/components/schemas/AppointmentCmd" } } } }, responses: { "200": { description: "data:{id,status:PENDING}" }, "400": { description: "40018 时段已满 / 40019 与未到访预约冲突" } } }
+    get: { tags: [appointment], security: [ { bearer: [] } ], summary: 我的预约, parameters: [ { name: status, in: query, schema: { type: string } } ], responses: { "200": { description: List<AppointmentVO> } } }
+  /appointments/{id}:
+    get: { tags: [appointment], security: [ { bearer: [] } ], responses: { "200": { description: AppointmentVO } } }
+  /appointments/{id}/cancel:
+    post: { tags: [appointment], security: [ { bearer: [] } ], summary: 用户取消（需 reason）, parameters: [ { name: id, in: path, schema: { type: integer, format: int64 } } ], responses: { "200": { description: OK }, "400": { description: "40930 状态不允许取消（已到访）" } } }
+  /appointments/{id}/reschedule:
+    post: { tags: [appointment], security: [ { bearer: [] } ], summary: 用户改期（回到 PENDING）, parameters: [ { name: id, in: path, schema: { type: integer, format: int64 } } ], responses: { "200": { description: OK } } }
+  /admin/appointments:
+    get: { tags: [appointment], security: [ { bearer: [] } ], summary: 后台预约列表（顾问仅见名下）, parameters: [ { name: date, in: query, schema: { type: string, format: date } }, { name: status, in: query, schema: { type: string } } ], responses: { "200": { description: Page<AppointmentVO> } } }
+  /admin/appointments/{id}/audit:
+    post: { tags: [appointment], security: [ { bearer: [] } ], summary: 确认/改约/到访/完成（状态机）, parameters: [ { name: id, in: path, schema: { type: integer, format: int64 } } ], requestBody: { content: { application/json: { schema: { type: object, properties: { target: { type: string, enum: [CONFIRMED, ARRIVED, COMPLETED, CANCELED] }, remark: { type: string }, visitSlot: { type: string } } } } } }, responses: { "200": { description: OK }, "400": { description: "40931 非法状态流转 / 40302 非归属顾问" } } }
+  /appointment-slots:
+    get: { tags: [appointment], summary: 可选日期与时段容量（FR-91）, parameters: [ { name: projectId, in: query, schema: { type: integer, format: int64 } } ], responses: { "200": { description: "data:[{date,slots:[{slot,capacity,used}]}]" } } }
+  /notifications:
+    get: { tags: [appointment], security: [ { bearer: [] } ], summary: 我的通知（预约提醒、锁释放等）, responses: { "200": { description: "List<NotificationVO>" } } }
+
+  /ai/rule-draft:
+    post: { tags: [ai], security: [ { bearer: [] } ], summary: I1 生成评估规则草案（不落库，需人工确认）, requestBody: { content: { application/json: { schema: { type: object, properties: { requirement: { type: string, description: "如：三代同堂、重视通风、预算 150 万" }, baseRuleSetId: { type: integer, format: int64 } } } } } }, responses: { "200": { description: "data:{ruleSetDraft(遵循 scoring-rule.schema.json), rationale, aiGenerated:true} / 降级 code=50310" } } }
+  /ai/advice:
+    post: { tags: [ai], security: [ { bearer: [] } ], summary: I3 智能选房顾问（画像 + 候选 → 推荐 + 理由）, requestBody: { content: { application/json: { schema: { type: object, properties: { candidateHouseTypeIds: { type: array, items: { type: integer, format: int64 } }, topN: { type: integer, default: 3 } } } } } }, responses: { "200": { description: "data:[{houseTypeId,score,reasons[],riskPoints[],matchDimensions[]}]" } } }
+  /ai/report-conclusion:
+    post: { tags: [ai], security: [ { bearer: [] } ], summary: I2 生成对比结论与选房建议（带证据引用）, requestBody: { content: { application/json: { schema: { type: object, properties: { reportId: { type: integer, format: int64 } } } } } }, responses: { "200": { description: "data:{conclusion, pros[], cons[], evidenceRefs[]} / 50310 模板降级" } } }
+  /ai/scene-code:
+    post: { tags: [ai], security: [ { bearer: [] } ], summary: I4 生成 Three.js 场景初始化代码（预览用，不自动执行）, requestBody: { content: { application/json: { schema: { type: object, properties: { houseTypeId: { type: integer, format: int64 } } } } } }, responses: { "200": { description: "data:{code, notes}" } } }
+
+components:
+  securitySchemes:
+    bearer: { type: http, scheme: bearer, bearerFormat: JWT }
+  parameters:
+    page: { name: page, in: query, schema: { type: integer, default: 1, minimum: 1 } }
+    size: { name: size, in: query, schema: { type: integer, default: 20, maximum: 100, description: "超过 100 返回 40001" } }
+  schemas:
+    ApiResponse:
+      type: object
+      required: [code, message]
+      properties:
+        code: { type: integer, description: "0=成功；错误码分段见 plan.md §3.1" }
+        message: { type: string }
+        traceId: { type: string }
+        data: { nullable: true }
+    Page:
+      type: object
+      properties: { records: { type: array, items: { type: object } }, total: { type: integer, format: int64 }, page: { type: integer }, size: { type: integer } }
+    RegisterCmd:
+      type: object
+      required: [phone, password, captcha, captchaId]
+      properties:
+        phone: { type: string, pattern: "^1[3-9]\\d{9}$" }
+        password: { type: string, minLength: 8, description: "至少字母+数字" }
+        nickname: { type: string, maxLength: 40 }
+        captchaId: { type: string }
+        captcha: { type: string }
+    ProfileCmd:
+      type: object
+      properties:
+        budgetMin: { type: number, example: 1200000 }
+        budgetMax: { type: number, example: 1600000 }
+        familyStructure: { type: string, enum: [SINGLE, COUPLE, FAMILY_3, FAMILY_4_2GEN, FAMILY_5_3GEN] }
+        mustRooms: { type: integer, minimum: 1, maximum: 6 }
+        preferOrientation: { type: array, items: { type: string } }
+        preferTags: { type: array, maxItems: 5, items: { type: string } }
+    UserVO:
+      type: object
+      properties: { id: { type: integer, format: int64 }, nickname: { type: string }, phone: { type: string, description: "脱敏 138****0001" }, role: { type: string }, profileCompleteness: { type: integer }, profile: { type: object } }
+    EvaluateCmd:
+      type: object
+      required: [houseTypeId]
+      properties:
+        houseTypeId: { type: integer, format: int64 }
+        houseId: { type: integer, format: int64, description: "传入则纳入楼层/遮挡/价格修正" }
+        templateCode: { type: string, enum: [GENERAL, FAMILY_3, FAMILY_4, MULTI_GEN, SENIOR_COUPLE, INVESTOR], default: GENERAL }
+    CompareCmd:
+      type: object
+      required: [houseTypeIds]
+      properties:
+        houseTypeIds: { type: array, minItems: 2, maxItems: 4, items: { type: integer, format: int64 } }
+        templateCode: { type: string }
+        aiConclusion: { type: boolean, default: true }
+    AppointmentCmd:
+      type: object
+      required: [projectId, visitDate, visitSlot, contactPhone, partySize]
+      properties:
+        projectId: { type: integer, format: int64 }
+        houseTypeId: { type: integer, format: int64 }
+        houseId: { type: integer, format: int64 }
+        intentionNo: { type: string, description: "由选房意向带入（AC-24）" }
+        visitDate: { type: string, format: date }
+        visitSlot: { type: string, example: "14:00-15:00" }
+        partySize: { type: integer, minimum: 1, maximum: 6 }
+        contactPhone: { type: string }
+        remark: { type: string, maxLength: 200 }

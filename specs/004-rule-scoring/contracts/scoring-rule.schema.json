@@ -1,0 +1,89 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://haofangzi.zhq/specs/004/scoring-rule.schema.json",
+  "title": "户型评估规则集 EvalRuleSet",
+  "description": "spec 004 规则外置文件与 eval_rule.tier_json 的校验契约（宪法第二条：契约先于实现）。CI 中对 resources/rules/default-rules.json 执行校验。",
+  "type": "object",
+  "required": ["name", "version", "status", "dimensions"],
+  "additionalProperties": false,
+  "properties": {
+    "name": { "type": "string", "minLength": 1, "maxLength": 64, "examples": ["肇庆好房子通用评估规则"] },
+    "version": { "type": "string", "pattern": "^v[0-9]+(\\.[0-9]+){0,2}$", "description": "语义化版本，PUBLISHED 后只读" },
+    "status": { "enum": ["DRAFT", "PUBLISHED", "OFFLINE"] },
+    "source": { "enum": ["MANUAL", "AI"], "default": "MANUAL", "description": "AI 草案必须人工确认后才可 PUBLISHED（FR-55，AC-36）" },
+    "templateCode": { "enum": ["GENERAL", "FAMILY_3", "FAMILY_4", "MULTI_GEN", "SENIOR_COUPLE", "INVESTOR"], "default": "GENERAL" },
+    "levelThresholds": {
+      "type": "object",
+      "description": "等级映射，边界左闭",
+      "properties": { "excellent": { "type": "number", "default": 85 }, "good": { "type": "number", "default": 75 }, "fair": { "type": "number", "default": 60 } },
+      "additionalProperties": false
+    },
+    "dimensions": {
+      "type": "array",
+      "minItems": 1,
+      "description": "全部维度权重之和必须为 1.000±0.001（FR-56）",
+      "items": {
+        "type": "object",
+        "required": ["code", "name", "weight", "maxScore", "rules"],
+        "additionalProperties": false,
+        "properties": {
+          "code": { "enum": ["LIGHT", "VENT", "CIRC", "UTIL", "QUIET", "GREEN", "COST"] },
+          "name": { "type": "string" },
+          "weight": { "type": "number", "minimum": 0, "maximum": 1 },
+          "maxScore": { "type": "number", "default": 100 },
+          "rules": { "type": "array", "minItems": 1, "items": { "$ref": "#/$defs/rule" } }
+        }
+      }
+    }
+  },
+  "$defs": {
+    "rule": {
+      "type": "object",
+      "required": ["metricCode", "metricName", "operator", "internalWeight", "tiers"],
+      "additionalProperties": false,
+      "properties": {
+        "metricCode": { "type": "string", "pattern": "^[A-Z]{4,5}_[a-z0-9_]+$", "description": "必须能在 MetricRegistry 中找到对应 MetricCalculator，否则按『数据不足』降级（FR-57）" },
+        "metricName": { "type": "string", "maxLength": 64 },
+        "sourceFields": { "type": "array", "items": { "type": "string" }, "description": "指标依赖的字段（如 hf_room.window_area），用于数据不足归因与追溯" },
+        "operator": { "enum": ["LT", "LE", "GT", "GE", "BETWEEN", "EQ", "BOOL"], "description": "BETWEEN/BOOL 允许多分档；LT/LE/GT/GE 只允许一个边界" },
+        "unit": { "type": "string", "examples": ["-", "m", "㎡", "%", "元/㎡"] },
+        "internalWeight": { "type": "number", "minimum": 0, "maximum": 1, "description": "维度内权重，同一维度 ΣinternalWeight = 1" },
+        "higherIsBetter": { "type": "boolean", "default": true },
+        "basis": { "type": "string", "maxLength": 255, "description": "依据来源（规范条文号或行业设计常识），NFR-11 必备" },
+        "suggestion": { "type": "string", "maxLength": 255, "description": "命中非最优档时给出的改进建议模板，支持 {value}/{need} 占位" },
+        "tiers": {
+          "type": "array",
+          "minItems": 1,
+          "description": "有序匹配，第一个命中即得分；数值档区间为 [min,max) 左闭右开",
+          "items": {
+            "oneOf": [
+              {
+                "type": "object",
+                "required": ["min", "score", "grade"],
+                "additionalProperties": false,
+                "properties": {
+                  "min": { "type": "number" },
+                  "max": { "type": "number" },
+                  "score": { "type": "number", "minimum": 0, "maximum": 100 },
+                  "grade": { "enum": ["优", "良", "中", "差"] },
+                  "evidence": { "type": "string", "description": "证据模板，如：窗地比 {value} ≥ {min}，判定为优" }
+                }
+              },
+              {
+                "type": "object",
+                "required": ["boolValue", "score", "grade"],
+                "additionalProperties": false,
+                "properties": {
+                  "boolValue": { "type": "boolean" },
+                  "score": { "type": "number", "minimum": 0, "maximum": 100 },
+                  "grade": { "enum": ["优", "良", "中", "差"] },
+                  "evidence": { "type": "string" }
+                }
+              }
+            ]
+          }
+        }
+      }
+    }
+  }
+}

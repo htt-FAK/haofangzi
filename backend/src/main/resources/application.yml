@@ -1,0 +1,65 @@
+server:
+  port: 8080
+  servlet:
+    context-path: /
+spring:
+  config:
+    import: optional:file:.env[.properties]      # 本地开发读 backend/.env（密钥不入库，宪法第七条 6）
+  application: { name: haofangzi }
+  datasource:
+    url: jdbc:mysql://${DB_HOST:127.0.0.1}:${DB_PORT:3306}/${DB_NAME:haofangzi}?useUnicode=true&characterEncoding=utf8&serverTimezone=Asia/Shanghai&allowPublicKeyRetrieval=true
+    username: ${DB_USER:root}
+    password: ${DB_PASSWORD:root}
+    hikari: { maximum-pool-size: 16, pool-name: hf-pool }
+  jackson:
+    default-property-inclusion: non_null
+    serialization: { write-dates-as-timestamps: false }
+  servlet:
+    multipart: { max-file-size: 20MB, max-request-size: 30MB }   # 002 素材上传 / 003 销控导入
+
+mybatis-plus:
+  configuration: { map-underscore-to-camel-case: true }
+  global-config:
+    db-config: { logic-delete-field: deleted, logic-delete-value: 1, logic-not-delete-value: 0, id-type: auto }
+
+springdoc:
+  swagger-ui: { path: /doc.html }
+  api-docs: { path: /v3/api-docs }
+
+haofangzi:
+  jwt:
+    secret: ${JWT_SECRET:change-me-in-env-please-32bytes-min}      # 禁止提交真实密钥（宪法第七条 6）
+    ttl-seconds: 7200
+  lock:
+    ttl-minutes: 10          # FR-35
+    renew-max: 2             # FR-36
+    total-max-minutes: 20    # AC-23
+    scan-seconds: 30         # plan 003 §3
+  intention:
+    ttl-hours: 24            # FR-37
+  favorite-limit: 50         # FR-33
+  security:
+    login-fail-limit: 5
+    login-lock-seconds: 900   # AC-01
+  eval:
+    cache-max: 2000
+    cache-ttl-minutes: 10     # FR-61
+    rule-source: classpath:rules/default-rules.json   # 首次启动导入 v1 规则集（FR-58）
+  ai:
+    enabled: ${LLM_ENABLED:true}      # false → 只走 MockLlmClient（AC-66 断网可演示）
+    base-url: ${LLM_BASE_URL:https://dashscope.aliyuncs.com/compatible-mode/v1}
+    model: ${LLM_MODEL:qwen-plus}
+    api-key: ${LLM_API_KEY:}          # 仅环境变量
+    timeout-ms: 8000
+    max-retry: 1
+    cache-seconds: 60                 # FR-113
+  media:
+    root: ./upload                     # 本地目录；可换 MinIO（FR-21）
+    sign-ttl-seconds: 600
+
+logging:
+  pattern:
+    console: "%d{HH:mm:ss} %-5level [%X{traceId:-}] %logger{18} - %msg%n"
+  level:
+    com.zhq.haofangzi: INFO
+    com.zhq.haofangzi.engine: DEBUG   # 演示时可见指标命中过程
