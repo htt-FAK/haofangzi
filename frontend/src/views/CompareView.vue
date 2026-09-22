@@ -3,8 +3,10 @@ import { computed, ref, watch } from 'vue'
 import { ElMessage } from 'element-plus'
 import { useRouter } from 'vue-router'
 import { get, post } from '../api/http'
+import { sensitivityNote } from '../utils/sensitivity'
 import { GRADE_COLOR, type EvaluationResult } from '../api/types'
 import { useCompareStore } from '../stores/compare'
+import AppIcon from '../components/AppIcon.vue'
 
 /**
  * 多户型比较（spec 005 / FR-30~36）。客户端聚合各户型评估结果生成矩阵：
@@ -47,6 +49,12 @@ function matrixOf(row: (typeof rows.value)[number]) {
   }
 }
 
+const sensitivity = computed(() => sensitivityNote(cols.value.map((c) => ({
+  houseTypeId: c.houseTypeId,
+  total: c.total,
+  dimensions: c.dimensions.map((d) => ({ code: d.code, weight: d.weight, score: d.score })),
+}))))
+
 const bestId = computed(() => {
   if (!cols.value.length) return null
   return cols.value.reduce((a, b) => (a.total >= b.total ? a : b)).houseTypeId
@@ -83,7 +91,8 @@ async function loadAll() {
       ElMessage.warning('还没有评估结果，先给候选打分')
       return
     }
-    await summarize()
+    conclusion.value = cols.value.length >= 2 ? localSummary() : null
+    void summarize()
   } finally {
     loading.value = false
   }
@@ -95,8 +104,8 @@ async function summarize() {
     return
   }
   try {
-    const payload = { ids: cols.value.map((c) => c.houseTypeId), scores: cols.value.map((c) => ({ id: c.houseTypeId, name: c.houseTypeName, total: c.total, dims: c.dimensions })) }
-    const d = await post<{ text: string; source?: string }>('/compare/conclusion', payload)
+    const payload = { ids: cols.value.map((c) => c.houseTypeId), scores: cols.value.map((c) => ({ id: c.houseTypeId, name: c.houseTypeName, total: c.total })) }
+    const d = await post<{ text: string; source?: string }>('/ai/report-conclusion', payload)
     conclusion.value = { text: d.text, source: d.source === 'ai' ? 'ai' : 'fallback' }
   } catch {
     conclusion.value = localSummary()
@@ -104,10 +113,22 @@ async function summarize() {
 }
 
 async function createShare() {
-  const d = await post<{ url: string; shareToken?: string; expireAt: string; source: string }>('/compare/share', {
-    ids: cols.value.map((c) => c.houseTypeId), summary: conclusion.value,
+  const report = await post<{ id: number }>('/compare-reports', {
+    houseTypeIds: cols.value.map((c) => c.houseTypeId),
+    summary: conclusion.value,
   })
-  share.value = { url: `${location.origin}/#/share/${d.shareToken ?? ''}?src=${d.source}`.replace(/#\/share\/\?/,'#/share?'), expireAt: d.expireAt }
+  const d = await post<{ token?: string; url?: string; expireAt: string }>(`/compare-reports/${report.id}/share`)
+  share.value = { url: `${location.origin}/share/reports/${d.token ?? ''}`, expireAt: d.expireAt }
+}
+
+async function copyShare() {
+  if (!share.value) return
+  try {
+    await navigator.clipboard.writeText(share.value.url)
+    ElMessage.success('链接已复制')
+  } catch {
+    ElMessage.warning('复制失败，请手动选择链接复制')
+  }
 }
 
 watch(() => store.ids.length, (n) => { if (n >= 1) loadAll() }, { immediate: true })
@@ -115,15 +136,23 @@ watch(() => store.ids.length, (n) => { if (n >= 1) loadAll() }, { immediate: tru
 
 <template>
   <div class="cmp">
-    <div class="top">
-      <h1>多方案比较（{{ cols.length }}）</h1>
-      <el-button size="small" :disabled="cols.length < 2" @click="createShare">生成分享链接（3 分钟）</el-button>
-      <el-button size="small" @click="loadAll">刷新</el-button>
-      <el-button size="small" text @click="router.push('/')">继续选房</el-button>
-    </div>
-    <p class="tip">候选来自收藏与评估历史；至少 2 个才生成对比结论（FR-30）。分数全部来自规则引擎，AI 仅写文字。</p>
+    <header class="intro">
+      <p class="hf-kicker">对比</p>
+      <div class="top">
+        <h1>多方案比较</h1>
+        <el-button :disabled="cols.length < 2" @click="createShare">生成分享链接</el-button>
+        <el-button @click="loadAll">刷新</el-button>
+        <el-button text @click="router.push('/')">继续选房</el-button>
+      </div>
+      <p class="hf-lead">候选来自收藏与评估历史；至少 2 个才生成对比结论。分数来自规则引擎，AI 只写文字。</p>
+    </header>
 
-    <div v-if="share" class="share">分享链接：<code>{{ share.url }}</code><span class="exp">有效期至 {{ share.expireAt }}</span></div>
+    <div v-if="share" class="share">
+      <AppIcon name="link" :size="15" />
+      <code class="url">{{ share.url }}</code>
+      <span class="exp hf-num">有效期至 {{ share.expireAt }}</span>
+      <el-button size="small" text class="copy-btn" @click="copyShare">复制</el-button>
+    </div>
 
     <el-table v-loading="loading" :data="rows" border class="mtx" size="small">
       <el-table-column prop="label" label="指标" width="130" fixed />
@@ -131,23 +160,27 @@ watch(() => store.ids.length, (n) => { if (n >= 1) loadAll() }, { immediate: tru
         <template #header>
           <div class="ch">
             <b>{{ c.houseTypeName }}</b>
-            <el-tag v-if="c.houseTypeId === bestId" size="small" type="success" effect="dark">推荐</el-tag>
-            <div class="score" :style="{ color: GRADE_COLOR[c.level] }">{{ c.total.toFixed(1) }} · {{ c.level }}
+            <el-tag v-if="c.houseTypeId === bestId" size="small" type="success" effect="dark" class="rec-tag">推荐</el-tag>
+            <div class="score hf-num" :style="{ color: GRADE_COLOR[c.level] }">{{ c.total.toFixed(1) }} · {{ c.level }}
               <i>（{{ gap(c) }}）</i>
             </div>
-            <div class="sub">建面 {{ (c as any).gfa ?? '—' }}㎡ · 规则 {{ c.setVersion }}</div>
+            <div class="sub">建面 {{ c.gfa ?? '—' }}㎡ · 规则 {{ c.setVersion }}</div>
           </div>
         </template>
         <template #default="{ row }">
-          <span :class="matrixOf(row)(c.houseTypeId, cell(row, c))">{{ cell(row, c).toFixed(1) }}</span>
+          <span class="cell-val hf-num" :class="matrixOf(row)(c.houseTypeId, cell(row, c))">{{ cell(row, c).toFixed(1) }}</span>
         </template>
       </el-table-column>
     </el-table>
 
     <el-card v-if="conclusion" class="concl" shadow="never">
-      <template #header>对比结论 <el-tag size="small" :type="conclusion.source === 'ai' ? 'primary' : 'info'">{{ conclusion.source === 'ai' ? 'AI 生成' : '模板回落' }}</el-tag></template>
+      <template #header>
+        <span class="concl-title"><AppIcon name="message" :size="15" /> 对比结论</span>
+        <el-tag size="small" :type="conclusion.source === 'ai' ? 'primary' : 'info'">{{ conclusion.source === 'ai' ? 'AI 生成' : '模板回落' }}</el-tag>
+      </template>
       <!-- 结论为纯文本插值渲染（不 v-html），防 XSS：spec 007 FR 与宪法安全基线 -->
       <p class="txt">{{ conclusion.text }}</p>
+      <p v-if="sensitivity" class="hint">{{ sensitivity }}</p>
       <p v-if="conclusion.source === 'ai'" class="hint">内容由大模型生成，仅供参考，不构成购房建议（FR-35）。</p>
     </el-card>
 
@@ -159,17 +192,46 @@ watch(() => store.ids.length, (n) => { if (n >= 1) loadAll() }, { immediate: tru
 
 <style scoped>
 .cmp { max-width: 1200px; margin: 0 auto; }
-.top { display: flex; align-items: center; gap: 10px; margin: 6px 0 2px; }
-.top h1 { font-size: 20px; margin: 0; flex: 1; }
-.tip { color: #777; font-size: 12px; margin: 2px 0 10px; }
-.share { background: #f0f7ff; border: 1px solid #d6e8ff; padding: 8px 10px; border-radius: 6px; font-size: 13px; margin-bottom: 10px; }
-.share .exp { color: #888; font-size: 12px; margin-left: 8px; }
-.mtx { margin-bottom: 14px; }
-.ch { line-height: 1.35; }
-.ch .score { font-size: 15px; }
-.ch .sub { color: #999; font-size: 11px; }
-.best { color: var(--hf-good); font-weight: 600; }
-.worst { color: var(--hf-bad); }
+.intro { margin-bottom: 22px; }
+.intro h1 { font-size: 28px; letter-spacing: -0.03em; }
+.top { display: flex; align-items: center; gap: 10px; margin: 8px 0 10px; flex-wrap: wrap; }
+.top h1 { flex: 1; margin: 0; }
+
+.share {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+  background: var(--hf-primary-softer);
+  border: 1px solid var(--hf-primary-soft);
+  padding: 9px 12px;
+  border-radius: var(--hf-radius-s);
+  font-size: 13px;
+  margin-bottom: 12px;
+  color: var(--hf-primary-strong);
+}
+.share .url { background: transparent; border: none; padding: 0; color: var(--hf-primary-strong); overflow-wrap: anywhere; }
+.share .exp { color: var(--hf-text-3); font-size: 12px; }
+.copy-btn { margin-left: auto; color: var(--hf-primary); }
+
+.mtx { margin-bottom: 16px; border-radius: var(--hf-radius-s); overflow: hidden; }
+.ch { line-height: 1.4; }
+.ch b { font-size: 13px; }
+.rec-tag { margin-left: 6px; }
+.ch .score { font-size: 16px; font-weight: 700; margin-top: 2px; }
+.ch .score i { font-style: normal; font-size: 11px; font-weight: 400; color: var(--hf-text-3); }
+.ch .sub { color: var(--hf-text-3); font-size: 11px; margin-top: 1px; }
+
+/* 最优/最差：底色 + 字重双编码，不只靠颜色（色弱可读） */
+.cell-val { display: block; text-align: center; border-radius: 5px; padding: 2px 0; font-weight: 500; }
+.cell-val.best { color: var(--hf-good); font-weight: 700; background: var(--hf-good-soft); }
+.cell-val.worst { color: var(--hf-bad); background: var(--hf-bad-soft); }
+
+.concl { border-left: 3px solid var(--hf-primary); }
+.concl :deep(.el-card__header) { display: flex; align-items: center; gap: 8px; }
+.concl-title { display: inline-flex; align-items: center; gap: 6px; font-weight: 700; }
+.concl-title .app-icon { color: var(--hf-primary); }
 .concl p { margin: 6px 0; font-size: 14px; }
-.concl .hint { color: #a05a00; font-size: 12px; }
+.concl .txt { line-height: 1.8; }
+.concl .hint { color: var(--hf-warn); font-size: 12px; }
 </style>

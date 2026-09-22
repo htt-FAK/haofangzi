@@ -1,48 +1,27 @@
 version: "3.8"
 
-# 课程设计演示编排：db + api + web，单机一键起（答辩现场用这个，避免依赖学校机房环境）
+# 课程设计演示编排：api + web。数据库是容器内的 SQLite 文件，不需要 MySQL。
 # 用法：cp backend/.env.example backend/.env  → 编辑真实密钥 → docker compose up -d
 #      离线演示：backend/.env 里设 LLM_ENABLED=false，AI 全部走 MockLlmClient 模板结果（AC-66）
 
 services:
-  db:
-    image: mysql:8.0
-    container_name: hf-db
-    environment:
-      MYSQL_ROOT_PASSWORD: haofangzi
-      MYSQL_DATABASE: haofangzi
-    command: --character-set-server=utf8mb4 --collation-server=utf8mb4_0900_ai_ci
-    ports: ["3306:3306"]
-    volumes:
-      - hfdb:/var/lib/mysql
-      # 首次启动建表 + 灌入种子数据（3 楼盘 / 20 户型 / 600 房源 / 规则 v1.0）
-      - ./database/schema.sql:/docker-entrypoint-initdb.d/10-schema.sql:ro
-      - ./database/seed-data.sql:/docker-entrypoint-initdb.d/20-seed.sql:ro
-    healthcheck:
-      test: ["CMD", "mysqladmin", "ping", "-h", "127.0.0.1", "-uroot", "-phaofangzi"]
-      interval: 10s
-      retries: 12
-
   api:
     build: ./backend
     image: haofangzi-api:1.0.0
     container_name: hf-api
-    depends_on:
-      db: { condition: service_healthy }
     environment:
-      DB_HOST: db
-      DB_NAME: haofangzi
-      DB_USER: root
-      DB_PASSWORD: haofangzi
+      SQLITE_PATH: /data/haofangzi.db
       JWT_SECRET: demo-only-please-change-me-32bytes!!
       LLM_ENABLED: "true"
-      LLM_BASE_URL: https://dashscope.aliyuncs.com/compatible-mode/v1
-      LLM_MODEL: qwen-plus
+      LLM_BASE_URL: https://api.siliconflow.cn/v1
+      LLM_MODEL: XingChenAGI/Xing4.0-29B
+      LLM_TIMEOUT_MS: "20000"
       LLM_API_KEY: ${LLM_API_KEY:-}
     env_file:
       - ./backend/.env
     ports: ["8080:8080"]
     volumes:
+      - hfdata:/data
       - hfmedia:/app/upload
     healthcheck:
       test: ["CMD", "wget", "-qO-", "http://127.0.0.1:8080/api/house-types?size=1"]
@@ -57,5 +36,5 @@ services:
     ports: ["3000:80"]        # 与预览/校内展示口径一致；nginx 反代 /api → hf-api:8080
 
 volumes:
-  hfdb: {}
+  hfdata: {}
   hfmedia: {}

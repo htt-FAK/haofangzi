@@ -114,6 +114,18 @@ class ScoreAssemblerTest {
     }
 
     @Test
+    @DisplayName("全部指标数据不足时总分为 0，不因有效权重为 0 而除零")
+    void allMissingIsZero() {
+        var out = assembler.assemble(set(0.22, List.of(numRule("LIGHT_wfa", 1.0))),
+                Map.of("LIGHT_WFA", MetricResult.insufficient("LIGHT_wfa", "缺"),
+                        "VENT_CROSS", MetricResult.insufficient("VENT_cross", "缺")),
+                Map.of());
+        assertThat(out.total()).isEqualTo(0d);
+        assertThat(out.missingCount()).isEqualTo(2);
+        assertThat(Double.isNaN(out.total())).isFalse();
+    }
+
+    @Test
     @DisplayName("分档匹配为左闭右开：0.14 归优档，0.1399 归良档")
     void tierBoundaries() {
         RuleSetView s = set(0.22, List.of(numRule("LIGHT_wfa", 1.0)));

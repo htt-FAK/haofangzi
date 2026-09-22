@@ -1,11 +1,17 @@
 package com.zhq.haofangzi.engine;
 
+import com.fasterxml.jackson.core.type.TypeReference;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.github.benmanes.caffeine.cache.Cache;
 import com.github.benmanes.caffeine.cache.Caffeine;
+import com.zhq.haofangzi.common.BizException;
+import com.zhq.haofangzi.common.ErrorCode;
+import com.zhq.haofangzi.mapper.RuleMapper;
 import java.io.IOException;
 import java.io.InputStream;
 import java.time.Duration;
+import java.util.ArrayList;
+import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import lombok.extern.slf4j.Slf4j;
@@ -16,11 +22,8 @@ import org.springframework.stereotype.Repository;
 /**
  * 规则装载与热更新（spec 004 FR-55/58、AC-35；plan §3）。
  *
- * <p>骨架实现策略：首次启动把 {@code resources/rules/default-rules.json} 解析为视图并缓存；
- * 发布新规则集时调用 {@link #invalidate()}，下一次评估即读到新版本，无需重启（NFR-08）。
- *
- * <p>任务 T-062/T-066 待接入数据库版：从 {@code eval_rule_set(active=1) + eval_rule} 组装同一
- * {@link RuleSetView}（tier_json 用 Jackson 解析并预排序）。视图与来源解耦，因此上层无感。
+ * <p>运行时优先读库中 {@code active=1 且 PUBLISHED} 的规则集；库不可用或没有发布版本时回退
+ * {@code default-rules.json}。发布后调用 {@link #invalidate()}，下一次评估即读到新版本（FR-58）。
  */
 @Slf4j
 @Repository
@@ -30,29 +33,155 @@ public class RuleRepository {
 
     private final ObjectMapper mapper;
     private final ResourceLoader resourceLoader;
+    private final RuleMapper rules;
     private final RuleSetView fallback;
     private final Cache<String, RuleSetView> cache = Caffeine.newBuilder()
             .maximumSize(8).expireAfterWrite(Duration.ofMinutes(5)).build();
 
-    public RuleRepository(ObjectMapper mapper, ResourceLoader resourceLoader,
+    public RuleRepository(ObjectMapper mapper, ResourceLoader resourceLoader, RuleMapper rules,
                           com.zhq.haofangzi.config.HfProperties props) {
         this.mapper = mapper;
         this.resourceLoader = resourceLoader;
+        this.rules = rules;
         this.fallback = loadFromJson(props.getEval().getRuleSource());
     }
 
+    public RuleSetView jsonSeed() {
+        return fallback;
+    }
+
     public RuleSetView active() {
-        RuleSetView v = cache.get(CACHE_KEY, k -> fallback);
-        if (!v.weightsValid()) {
+        RuleSetView v = cache.get(CACHE_KEY, k -> loadActiveOrFallback());
+        if (v != null && !v.weightsValid()) {
             log.error("ACTIVE 规则集权重之和≠1（version={}），仍按现值计算，请检查发布流程", v.version());
         }
         return v;
     }
 
-    /** DRAFT 试算用（FR-60 / docs/04 §4.5） */
+    /** 按编号装载。编号无效或库中没有该版本时直接失败，不用当前生效规则顶上。 */
     public RuleSetView load(long setId) {
-        // TODO(T-066): 按 setId 从库中组装 RuleSetView；当前骨架回退 ACTIVE
-        return active();
+        if (setId <= 0) {
+            return active();
+        }
+        Map<String, Object> row = rules.ruleSet(setId);
+        if (row == null || row.get("id") == null) {
+            throw new BizException(ErrorCode.PARAM_INVALID, "规则集不存在");
+        }
+        RuleSetView built = assemble(row, rules.rulesOf(setId));
+        if (built == null) {
+            throw new BizException(ErrorCode.INTERNAL, "规则集无法组装");
+        }
+        return built;
+    }
+
+    private RuleSetView loadActiveOrFallback() {
+        try {
+            Map<String, Object> row = rules.activeRuleSet();
+            if (row != null && row.get("id") != null) {
+                long id = ((Number) row.get("id")).longValue();
+                RuleSetView built = assemble(row, rules.rulesOf(id));
+                if (built != null && built.dims() != null && !built.dims().isEmpty()) {
+                    log.info("已装载数据库规则集 id={} version={}", built.setId(), built.version());
+                    return built;
+                }
+            }
+        } catch (Exception e) {
+            log.warn("库中 ACTIVE 规则不可用，回退 JSON 种子：{}", e.toString());
+        }
+        return fallback;
+    }
+
+    /** 把规则行组装成与 JSON 种子相同的视图。行按维度分组，分档预排序。 */
+    RuleSetView assemble(Map<String, Object> header, List<Map<String, Object>> rows) {
+        if (header == null || rows == null || rows.isEmpty()) {
+            return null;
+        }
+        Map<String, List<Map<String, Object>>> grouped = new LinkedHashMap<>();
+        Map<String, String> names = new LinkedHashMap<>();
+        Map<String, Double> weights = new LinkedHashMap<>();
+        for (Map<String, Object> row : rows) {
+            String code = str(row.get("dimCode"));
+            if (code.isBlank()) {
+                continue;
+            }
+            grouped.computeIfAbsent(code, k -> new ArrayList<>()).add(row);
+            names.putIfAbsent(code, str(row.get("dimName")));
+            if (row.get("dimWeight") != null) {
+                weights.put(code, num(row.get("dimWeight")));
+            }
+        }
+        List<RuleSetView.DimView> dims = new ArrayList<>();
+        for (Map.Entry<String, List<Map<String, Object>>> e : grouped.entrySet()) {
+            List<RuleSetView.RuleView> rules = new ArrayList<>();
+            for (Map<String, Object> r : e.getValue()) {
+                rules.add(new RuleSetView.RuleView(
+                        str(r.get("metricCode")), str(r.get("metricName")), str(r.get("unit")),
+                        str(r.get("operator")).isBlank() ? "BETWEEN" : str(r.get("operator")),
+                        num(r.get("internalWeight")), truthy(r.get("higherIsBetter")),
+                        Raw.orderTiers(parseTiers(str(r.get("tierJson")))),
+                        str(r.get("basis")), str(r.get("suggestion")), parseFields(str(r.get("sourceFields")))));
+            }
+            dims.add(new RuleSetView.DimView(e.getKey(), names.getOrDefault(e.getKey(), e.getKey()),
+                    weights.getOrDefault(e.getKey(), 0d), rules));
+        }
+        return new RuleSetView(((Number) header.get("id")).longValue(), str(header.get("name")),
+                str(header.get("version")),
+                str(header.get("templateCode")).isBlank() ? "GENERAL" : str(header.get("templateCode")),
+                dims, RuleSetView.LevelThresholds.defaults());
+    }
+
+    private List<RuleSetView.Tier> parseTiers(String json) {
+        if (json == null || json.isBlank()) {
+            return List.of();
+        }
+        try {
+            return mapper.readValue(json, new TypeReference<List<RuleSetView.Tier>>() {});
+        } catch (Exception e) {
+            log.warn("分档 JSON 无法解析：{}", e.toString());
+            return List.of();
+        }
+    }
+
+    private List<String> parseFields(String raw) {
+        if (raw == null || raw.isBlank()) {
+            return List.of();
+        }
+        if (raw.strip().startsWith("[")) {
+            try {
+                return mapper.readValue(raw, new TypeReference<List<String>>() {});
+            } catch (Exception e) {
+                return List.of(raw);
+            }
+        }
+        return List.of(raw);
+    }
+
+    private static String str(Object o) {
+        return o == null ? "" : String.valueOf(o);
+    }
+
+    private static double num(Object o) {
+        if (o instanceof Number n) {
+            return n.doubleValue();
+        }
+        if (o == null) {
+            return 0d;
+        }
+        try {
+            return Double.parseDouble(String.valueOf(o));
+        } catch (NumberFormatException e) {
+            return 0d;
+        }
+    }
+
+    private static boolean truthy(Object o) {
+        if (o instanceof Boolean b) {
+            return b;
+        }
+        if (o instanceof Number n) {
+            return n.intValue() != 0;
+        }
+        return o == null || !"0".equals(String.valueOf(o)) && !"false".equalsIgnoreCase(String.valueOf(o));
     }
 
     /** 规则发布后调用：下一个请求即读到新版本（AC-35） */

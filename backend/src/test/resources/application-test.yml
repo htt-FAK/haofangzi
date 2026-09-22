@@ -1,0 +1,6 @@
+spring:
+  datasource:
+    url: jdbc:sqlite:target/it-haofangzi.db
+  task:
+    scheduling:
+      enabled: false

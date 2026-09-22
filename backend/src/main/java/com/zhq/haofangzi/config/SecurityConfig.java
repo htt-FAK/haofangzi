@@ -8,6 +8,7 @@ import io.jsonwebtoken.security.Keys;
 import jakarta.servlet.FilterChain;
 import jakarta.servlet.ServletException;
 import jakarta.servlet.http.HttpServletRequest;
+import com.zhq.haofangzi.common.ErrorCode;
 import jakarta.servlet.http.HttpServletResponse;
 import java.io.IOException;
 import java.nio.charset.StandardCharsets;
@@ -22,6 +23,8 @@ import org.springframework.security.config.annotation.method.configuration.Enabl
 import org.springframework.security.config.annotation.web.builders.HttpSecurity;
 import org.springframework.security.config.annotation.web.configurers.AbstractHttpConfigurer;
 import org.springframework.security.config.http.SessionCreationPolicy;
+import org.springframework.security.crypto.bcrypt.BCryptPasswordEncoder;
+import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.security.web.SecurityFilterChain;
 import org.springframework.security.web.authentication.UsernamePasswordAuthenticationFilter;
 import org.springframework.web.filter.OncePerRequestFilter;
@@ -46,8 +49,13 @@ public class SecurityConfig {
                 .cors(c -> c.configurationSource(cors()))
                 .sessionManagement(s -> s.sessionCreationPolicy(SessionCreationPolicy.STATELESS))
                 .authorizeHttpRequests(reg -> reg
-                        .requestMatchers("/api/auth/**", "/v3/api-docs/**", "/doc.html", "/favicon.ico").permitAll()
+                        .requestMatchers("/api/auth/**", "/v3/api-docs/**", "/swagger-ui/**", "/doc.html", "/favicon.ico").permitAll()
+                        .requestMatchers(org.springframework.http.HttpMethod.GET, "/api/share/**").permitAll()
                         .requestMatchers("/api/admin/**").hasAnyRole("ADMIN", "CONSULTANT")
+                        .requestMatchers("/api/ai/**").authenticated()
+                        .requestMatchers(org.springframework.http.HttpMethod.GET,
+                                "/api/appointments/**", "/api/selection/**", "/api/users/**",
+                                "/api/compare-reports/**").authenticated()
                         .requestMatchers(org.springframework.http.HttpMethod.GET, "/api/**").permitAll()
                         // 写接口一律需鉴权（NFR-06；分享只读页走 token 不过此处）
                         .requestMatchers(org.springframework.http.HttpMethod.POST, "/api/**").authenticated()
@@ -55,13 +63,30 @@ public class SecurityConfig {
                         .requestMatchers(org.springframework.http.HttpMethod.PATCH, "/api/**").authenticated()
                         .requestMatchers(org.springframework.http.HttpMethod.DELETE, "/api/**").authenticated()
                         .anyRequest().permitAll())
+                .exceptionHandling(ex -> ex
+                        .authenticationEntryPoint((req, res, e) -> writeJson(res, ErrorCode.UNAUTHORIZED, "请先登录"))
+                        .accessDeniedHandler((req, res, e) -> writeJson(res, ErrorCode.FORBIDDEN, "无权限执行此操作")))
                 .addFilterBefore(jwtFilter, UsernamePasswordAuthenticationFilter.class);
         return http.build();
     }
 
+    @Bean
+    public PasswordEncoder passwordEncoder() {
+        return new BCryptPasswordEncoder(10);
+    }
+
+    private static void writeJson(HttpServletResponse res, int code, String message) throws IOException {
+        res.setStatus(200);
+        res.setCharacterEncoding("UTF-8");
+        res.setContentType("application/json;charset=UTF-8");
+        res.getWriter().write("{\"code\":" + code + ",\"message\":\"" + message + "\",\"traceId\":\"\",\"data\":null}");
+    }
+
     private CorsConfigurationSource cors() {
         CorsConfiguration cfg = new CorsConfiguration();
-        cfg.setAllowedOriginPatterns(List.of("http://localhost:*"));
+        // 同时放行 localhost 与 127.0.0.1 来源：POST 等非 GET 请求会带 Origin 头，
+        // 只配 localhost 时用 127.0.0.1 访问会被 CORS 过滤器拦截（GET 不发 Origin 故表现正常）
+        cfg.setAllowedOriginPatterns(List.of("http://localhost:*", "http://127.0.0.1:*"));
         cfg.setAllowedMethods(List.of("GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"));
         cfg.setAllowedHeaders(List.of("*"));
         cfg.setAllowCredentials(true);
@@ -82,17 +107,32 @@ public class SecurityConfig {
         }
 
         public String issue(long userId, String role) {
+            return sign(userId, role, "access", ttlSeconds, null);
+        }
+
+        /** 一次性刷新令牌，有效期 7 天。用过即作废（FR-03）。 */
+        public String issueRefresh(long userId, String role) {
+            return sign(userId, role, "refresh", 7 * 24 * 3600L, java.util.UUID.randomUUID().toString());
+        }
+
+        private String sign(long userId, String role, String typ, long seconds, String jti) {
             var now = java.time.Instant.now();
-            return Jwts.builder().setSubject(String.valueOf(userId)).claim("role", role)
+            var b = Jwts.builder().setSubject(String.valueOf(userId)).claim("role", role).claim("typ", typ)
                     .setIssuedAt(java.util.Date.from(now))
-                    .setExpiration(java.util.Date.from(now.plusSeconds(ttlSeconds)))
-                    .signWith(key, SignatureAlgorithm.HS256).compact();
+                    .setExpiration(java.util.Date.from(now.plusSeconds(seconds)));
+            if (jti != null) {
+                b.setId(jti);
+            }
+            return b.signWith(key, SignatureAlgorithm.HS256).compact();
         }
 
         @SuppressWarnings("deprecation")
         public Map<String, Object> parse(String token) {
             var jws = Jwts.parserBuilder().setSigningKey(key).build().parseClaimsJws(token).getBody();
-            return Map.of("sub", String.valueOf(jws.getSubject()), "role", String.valueOf(jws.get("role")));
+            String typ = jws.get("typ") == null ? "access" : String.valueOf(jws.get("typ"));
+            String jti = jws.getId() == null ? "" : jws.getId();
+            return Map.of("sub", String.valueOf(jws.getSubject()), "role", String.valueOf(jws.get("role")),
+                    "typ", typ, "jti", jti);
         }
     }
 
@@ -115,7 +155,7 @@ public class SecurityConfig {
                 String h = req.getHeader("Authorization");
                 if (h != null && h.startsWith("Bearer ")) {
                     Map<String, Object> claims = parsed.get(h.substring(7), authLookup::parseOrEmpty);
-                    if (claims != null && !claims.isEmpty()) {
+                    if (claims != null && !claims.isEmpty() && !"refresh".equals(String.valueOf(claims.get("typ")))) {
                         String role = String.valueOf(claims.get("role"));
                         var auth = new org.springframework.security.authentication.UsernamePasswordAuthenticationToken(
                                 String.valueOf(claims.get("sub")), null,

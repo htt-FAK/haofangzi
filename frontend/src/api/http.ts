@@ -13,7 +13,7 @@ import type { ApiResponse } from './types'
  */
 export const CONFLICT_CODES = [40910, 40911, 40912, 40920, 40921, 40931]
 
-export const http: AxiosInstance = axios.create({ baseURL: '/api', timeout: 12000 })
+export const http: AxiosInstance = axios.create({ baseURL: '/api', timeout: 50000 })
 
 http.interceptors.request.use((cfg) => {
   const token = localStorage.getItem('hf-token')
@@ -22,14 +22,34 @@ http.interceptors.request.use((cfg) => {
 })
 
 http.interceptors.response.use(
-  (res) => {
+  async (res) => {
     const body = res.data as ApiResponse<unknown>
     if (body?.code === 0) return body.data as any
 
+    const cfg = res.config as typeof res.config & { _retried?: boolean }
+    if (body.code === 40101 && !String(cfg.url || '').includes('/auth/refresh') && !cfg._retried) {
+      const rt = localStorage.getItem('hf-refresh')
+      if (rt) {
+        try {
+          const refreshed = await axios.post('/api/auth/refresh', { refreshToken: rt })
+          const payload = refreshed.data as ApiResponse<{ token: string }>
+          if (payload.code === 0 && payload.data?.token) {
+            localStorage.setItem('hf-token', payload.data.token)
+            localStorage.removeItem('hf-refresh')
+            cfg._retried = true
+            cfg.headers.Authorization = `Bearer ${payload.data.token}`
+            return http(cfg)
+          }
+        } catch {
+          /* 刷新失败则回到登录 */
+        }
+      }
+    }
     if (body.code === 40101) {
-      const redirect = encodeURIComponent(location.hash.replace(/^#/, '') || location.pathname)
+      const redirect = encodeURIComponent(location.pathname + location.search)
       localStorage.removeItem('hf-token')
-      location.href = `/#/login?redirect=${redirect}`
+      localStorage.removeItem('hf-user')
+      location.href = `/login?redirect=${redirect}`
       return Promise.reject(body)
     }
     if (CONFLICT_CODES.includes(body.code)) return Promise.reject(body)   // 调用方给冲突 UI
@@ -49,3 +69,4 @@ http.interceptors.response.use(
 export const get = <T>(url: string, params?: object) => http.get<T, T>(url, { params })
 export const post = <T>(url: string, body?: object) => http.post<T, T>(url, body)
 export const put = <T>(url: string, body?: object) => http.put<T, T>(url, body)
+export const del = <T>(url: string) => http.delete<T, T>(url)

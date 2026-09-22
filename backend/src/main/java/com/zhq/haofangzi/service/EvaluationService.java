@@ -19,7 +19,9 @@ import com.zhq.haofangzi.engine.RuleRepository;
 import com.zhq.haofangzi.engine.RuleSetView;
 import com.zhq.haofangzi.engine.ScoreAssembler;
 import com.zhq.haofangzi.engine.ScoringEngine;
-import com.zhq.haofangzi.mapper.HfMapper;
+import com.zhq.haofangzi.mapper.CatalogMapper;
+import com.zhq.haofangzi.mapper.EvalMapper;
+import com.zhq.haofangzi.mapper.UserMapper;
 import java.math.BigDecimal;
 import java.nio.charset.StandardCharsets;
 import java.security.MessageDigest;
@@ -36,7 +38,7 @@ import org.springframework.transaction.annotation.Transactional;
  *
  * <p>关键设计：
  * <ul>
- *   <li>缓存键包含 {@code setVersion + template}，发布新版本自然失效（FR-61 / AC-35）；</li>
+ *   <li>缓存键包含规则版本、模板和用户。未登录预览不会盖住已登录、带预算的评分（FR-61 / AC-35）；</li>
  *   <li>结果对象与 {@code detail_json} 同一来源，保证重开历史与当时一致（AC-32）；</li>
  *   <li>预览态（游客/试算）不写库（FR-09）。</li>
  * </ul>
@@ -46,7 +48,9 @@ import org.springframework.transaction.annotation.Transactional;
 @RequiredArgsConstructor
 public class EvaluationService {
 
-    private final HfMapper hf;
+    private final CatalogMapper catalog;
+    private final EvalMapper evals;
+    private final UserMapper users;
     private final ScoringEngine engine;
     private final RuleRepository rules;
     private final HfProperties props;
@@ -57,17 +61,17 @@ public class EvaluationService {
 
     @Transactional
     public EvaluationDto.Result evaluate(EvaluationDto.Cmd cmd, Long userId) {
-        HouseType ht = hf.houseType(cmd.getHouseTypeId());
+        HouseType ht = catalog.houseType(cmd.getHouseTypeId());
         if (ht == null) {
             throw new BizException(ErrorCode.HOUSE_TYPE_NOT_FOUND, "户型不存在或已下架");
         }
-        House house = cmd.getHouseId() == null ? null : hf.house(cmd.getHouseId());
+        House house = cmd.getHouseId() == null ? null : catalog.house(cmd.getHouseId());
         if (cmd.getHouseId() != null && house == null) {
             throw new BizException(ErrorCode.HOUSE_NOT_FOUND, "房源不存在");
         }
         RuleSetView set = rules.active();
-        ScoringEngine.CrowdTemplate template = ScoringEngine.CrowdTemplate.of(cmd.getTemplateCode());
-        String key = cacheKey(cmd, set.version(), template);
+        ScoringEngine.CrowdTemplate template = templateOf(cmd.getTemplateCode());
+        String key = cacheKey(cmd, set.version(), template, userId);
         EvaluationDto.Result cached = cache.get(key, k -> compute(ht, house, set, template, userId));
 
         EvaluationDto.Result result = copyWithMeta(cached);
@@ -80,7 +84,7 @@ public class EvaluationService {
 
     /** 读快照（不重算）：AC-32 历史复现 */
     public EvaluationDto.Result readSnapshot(long evaluationId, Long requester) {
-        Evaluation e = hf.evaluation(evaluationId);
+        Evaluation e = evals.evaluation(evaluationId);
         if (e == null) {
             throw new BizException(ErrorCode.HOUSE_TYPE_NOT_FOUND, "评测记录不存在");
         }
@@ -103,12 +107,12 @@ public class EvaluationService {
     }
 
     private MetricContext loadContext(HouseType ht, House house, Long userId) {
-        List<Room> rooms = hf.rooms(ht.getId());
-        Building b = house == null || house.getBuildingId() == null ? null : hf.building(house.getBuildingId());
-        Project p = hf.project(ht.getProjectId());
+        List<Room> rooms = catalog.rooms(ht.getId());
+        Building b = house == null || house.getBuildingId() == null ? null : catalog.building(house.getBuildingId());
+        Project p = catalog.project(ht.getProjectId());
         MetricContext.Profile profile = null;
         if (userId != null) {
-            UserBrief u = hf.userBrief(userId);
+            UserBrief u = users.userBrief(userId);
             if (u != null && u.getBudgetMin() != null && u.getBudgetMax() != null) {
                 profile = new MetricContext.Profile(u.getBudgetMin().longValue(), u.getBudgetMax().longValue(),
                         u.getFamilyStructure(), u.getMustRooms());
@@ -122,6 +126,7 @@ public class EvaluationService {
         EvaluationDto.Result r = new EvaluationDto.Result();
         r.setHouseTypeId(ht.getId());
         r.setHouseTypeName(ht.getName());
+        r.setGfa(ht.getGfa() == null ? null : ht.getGfa().doubleValue());
         r.setHouseId(house == null ? null : house.getId());
         r.setSetVersion(set.version() + (template == ScoringEngine.CrowdTemplate.GENERAL ? "" : "/" + template));
         r.setTotal(o.total());
@@ -178,22 +183,27 @@ public class EvaluationService {
         } catch (Exception ex) {
             throw new BizException(ErrorCode.INTERNAL, "评分快照序列化失败");
         }
-        hf.insertEvaluation(e);
+        evals.insertEvaluation(e);
         return e;
     }
 
-    private String cacheKey(EvaluationDto.Cmd cmd, String version, ScoringEngine.CrowdTemplate t) {
+    private ScoringEngine.CrowdTemplate templateOf(String code) {
         try {
-            String raw = cmd.getHouseTypeId() + "|" + cmd.getHouseId() + "|" + version + "|" + t;
-            return HexFormat.of().formatHex(MessageDigest.getInstance("SHA-256").digest(raw.getBytes(StandardCharsets.UTF_8)))
-                    .substring(0, 32);
-        } catch (Exception e) {
-            return rawKey(cmd, version, t);
+            return ScoringEngine.CrowdTemplate.of(code);
+        } catch (IllegalArgumentException e) {
+            throw new BizException(ErrorCode.PARAM_INVALID, "未知人群模板：" + code);
         }
     }
 
-    private String rawKey(EvaluationDto.Cmd cmd, String version, ScoringEngine.CrowdTemplate t) {
-        return cmd.getHouseTypeId() + version + t.name();
+    private String cacheKey(EvaluationDto.Cmd cmd, String version, ScoringEngine.CrowdTemplate t, Long userId) {
+        String raw = cmd.getHouseTypeId() + "|" + cmd.getHouseId() + "|" + version + "|" + t
+                + "|" + (userId == null ? 0 : userId);
+        try {
+            return HexFormat.of().formatHex(MessageDigest.getInstance("SHA-256").digest(raw.getBytes(StandardCharsets.UTF_8)))
+                    .substring(0, 32);
+        } catch (java.security.NoSuchAlgorithmException e) {
+            throw new IllegalStateException(e);
+        }
     }
 
     /** 缓存对象必须"每次返回副本"，否则调用方修改会污染缓存 */
@@ -206,7 +216,7 @@ public class EvaluationService {
     }
 
     public List<Evaluation> history(long houseTypeId, int limit) {
-        return hf.evaluations(houseTypeId, Math.min(limit, 50));
+        return evals.evaluations(houseTypeId, Math.min(limit, 50));
     }
 
     public String activeRuleVersion() {

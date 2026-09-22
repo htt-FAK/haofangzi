@@ -51,6 +51,14 @@ export interface HouseTypeGeometry {
   tags?: string[]
 }
 
+export interface PlanBox {
+  x: number
+  y: number
+  w: number
+  h: number
+  category?: string
+}
+
 export interface HouseTypeCard {
   id: number
   code: string
@@ -61,6 +69,7 @@ export interface HouseTypeCard {
   priceRef: string
   latestScore: string | number | ''
   latestLevel: string
+  plan?: PlanBox[]
 }
 
 /** ── 004 评分 ── */
@@ -89,6 +98,7 @@ export interface EvaluationResult {
   evaluationId?: number
   houseTypeId: number
   houseTypeName: string
+  gfa?: number
   houseId?: number | null
   setVersion: string
   total: number
@@ -122,9 +132,9 @@ export interface LockResult {
   alternatives?: HouseSnap[]
 }
 
-/** 统一等级色板：颜色 + 箭头双编码（NFR-10 色弱可读） */
+/** 统一等级色板：颜色 + 箭头双编码（NFR-10 色弱可读）；取值均通过 WCAG AA（白底 ≥4.5:1） */
 export const GRADE_COLOR: Record<string, string> = {
-  优: '#0a8a4a', 良: '#1e88e5', 中: '#ef9f2d', 差: '#c62828', 数据不足: '#9e9e9e',
+  优: '#1b7a4a', 良: '#215e7a', 中: '#c47a12', 差: '#b42318', 数据不足: '#8a8a84',
 }
 export const GRADE_ARROW: Record<string, string> = {
   优: '↑↑', 良: '↑', 中: '→', 差: '↓', 数据不足: '—',

@@ -40,6 +40,10 @@ npm-debug.log*
 yarn-error.log*
 pnpm-debug.log*
 
+# SQLite runtime database
+backend/data/
+*.db
+
 # Local uploads
 upload/
 backend/upload/

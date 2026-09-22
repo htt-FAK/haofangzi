@@ -7,10 +7,7 @@ spring:
     import: optional:file:.env[.properties]      # 本地开发读 backend/.env（密钥不入库，宪法第七条 6）
   application: { name: haofangzi }
   datasource:
-    url: jdbc:mysql://${DB_HOST:127.0.0.1}:${DB_PORT:3306}/${DB_NAME:haofangzi}?useUnicode=true&characterEncoding=utf8&serverTimezone=Asia/Shanghai&allowPublicKeyRetrieval=true
-    username: ${DB_USER:root}
-    password: ${DB_PASSWORD:root}
-    hikari: { maximum-pool-size: 16, pool-name: hf-pool }
+    url: jdbc:sqlite:${SQLITE_PATH:./data/haofangzi.db}
   jackson:
     default-property-inclusion: non_null
     serialization: { write-dates-as-timestamps: false }
@@ -47,10 +44,10 @@ haofangzi:
     rule-source: classpath:rules/default-rules.json   # 首次启动导入 v1 规则集（FR-58）
   ai:
     enabled: ${LLM_ENABLED:true}      # false → 只走 MockLlmClient（AC-66 断网可演示）
-    base-url: ${LLM_BASE_URL:https://dashscope.aliyuncs.com/compatible-mode/v1}
-    model: ${LLM_MODEL:qwen-plus}
-    api-key: ${LLM_API_KEY:}          # 仅环境变量
-    timeout-ms: 8000
+    base-url: ${LLM_BASE_URL:https://api.siliconflow.cn/v1}
+    model: ${LLM_MODEL:XingChenAGI/Xing4.0-29B}
+    api-key: ${LLM_API_KEY:}          # 仅环境变量，不入库
+    timeout-ms: ${LLM_TIMEOUT_MS:20000}
     max-retry: 1
     cache-seconds: 60                 # FR-113
   media:

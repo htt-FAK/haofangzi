@@ -1,6 +1,6 @@
 {
   "name": "肇庆好房子通用评估规则",
-  "version": "v1.0",
+  "version": "v1.1",
   "status": "PUBLISHED",
   "templateCode": "GENERAL",
   "levelThresholds": { "excellent": 85, "good": 75, "fair": 60 },
@@ -10,29 +10,67 @@
       "rules": [
         {
           "metricCode": "LIGHT_wfa", "metricName": "起居空间窗地比", "unit": "-", "operator": "BETWEEN",
-          "internalWeight": 0.55, "higherIsBetter": true,
+          "internalWeight": 0.28, "higherIsBetter": true,
           "sourceFields": ["hf_room.window_area", "hf_room.area"],
           "basis": "《住宅项目规范》：卧室/起居空间窗地面积比不应低于 1/7（≈0.143）",
-          "suggestion": "提高客厅/主卧窗地比（如换大窗或减少窗间墙），当前 {value}",
+          "suggestion": "提高客厅/主卧窗地比，当前 {value}",
           "tiers": [
             { "min": 0.14, "score": 100, "grade": "优", "evidence": "窗地比 {value} ≥ 0.140，不低于 1/7 条文要求" },
-            { "min": 0.115, "max": 0.14, "score": 80, "grade": "良", "evidence": "窗地比 {value} 处于 0.115~0.140，接近但未达 1/7" },
-            { "min": 0.09, "max": 0.115, "score": 60, "grade": "中", "evidence": "窗地比 {value} 偏低，白天需补光" },
+            { "min": 0.115, "max": 0.14, "score": 80, "grade": "良", "evidence": "窗地比 {value} 处于 0.115~0.140" },
+            { "min": 0.09, "max": 0.115, "score": 60, "grade": "中", "evidence": "窗地比 {value} 偏低" },
             { "max": 0.09, "score": 40, "grade": "差", "evidence": "窗地比 {value} 明显不足" }
           ]
         },
         {
           "metricCode": "LIGHT_orientation", "metricName": "主要朝向", "unit": "-", "operator": "BETWEEN",
-          "internalWeight": 0.45, "higherIsBetter": true,
+          "internalWeight": 0.22, "higherIsBetter": true,
           "sourceFields": ["hf_house_type.orientation"],
-          "basis": "行业设计常识：正南＞东南/西南＞东西＞北（肇庆地处北回归线附近，南向冬日照佳）",
-          "suggestion": "同一户型不同单元的朝向差异可通过选择房源修正；关注冬至日日照",
+          "basis": "行业设计常识：正南＞东南/西南＞东西＞北",
+          "suggestion": "同一户型可换朝向更好的单元",
           "tiers": [
             { "min": 4.5, "score": 100, "grade": "优", "evidence": "南北双向采光（值 {value}）" },
             { "min": 4, "max": 4.5, "score": 92, "grade": "优", "evidence": "正南朝向" },
-            { "min": 3, "max": 4, "score": 75, "grade": "良", "evidence": "偏南朝向（东南/西南）" },
-            { "min": 2, "max": 3, "score": 55, "grade": "中", "evidence": "东西朝向，存在西晒/晨弱光" },
-            { "max": 2, "score": 35, "grade": "差", "evidence": "北向为主，自然光弱" }
+            { "min": 3, "max": 4, "score": 75, "grade": "良", "evidence": "偏南朝向" },
+            { "min": 2, "max": 3, "score": 55, "grade": "中", "evidence": "东西朝向" },
+            { "max": 2, "score": 35, "grade": "差", "evidence": "北向为主" }
+          ]
+        },
+        {
+          "metricCode": "LIGHT_bay_depth", "metricName": "面宽进深比", "unit": "-", "operator": "BETWEEN",
+          "internalWeight": 0.18, "higherIsBetter": true,
+          "sourceFields": ["hf_house_type.bay", "hf_house_type.depth"],
+          "basis": "设计常识：面宽/进深宜在 1.2~1.8，过深采光衰减",
+          "suggestion": "进深过大时优先看南向开间是否够宽",
+          "tiers": [
+            { "min": 1.2, "max": 1.8, "score": 100, "grade": "优", "evidence": "面宽进深比 {value} 落在 1.2~1.8" },
+            { "min": 1.0, "max": 1.2, "score": 75, "grade": "良", "evidence": "略偏深" },
+            { "min": 1.8, "max": 2.2, "score": 75, "grade": "良", "evidence": "面宽偏大" },
+            { "min": 2.2, "score": 40, "grade": "差", "evidence": "比例失衡" },
+            { "max": 1.0, "score": 40, "grade": "差", "evidence": "进深过大" }
+          ]
+        },
+        {
+          "metricCode": "LIGHT_floor_occlusion", "metricName": "低层遮挡", "unit": "-", "operator": "BETWEEN",
+          "internalWeight": 0.16, "higherIsBetter": true,
+          "sourceFields": ["hf_house.floor_no", "hf_building.south_occlusion"],
+          "basis": "简化日照：8 层以下按南向遮挡系数衰减，1 表示南向无遮挡",
+          "suggestion": "低楼层请现场看南向楼间距",
+          "tiers": [
+            { "min": 0.9, "score": 100, "grade": "优", "evidence": "遮挡修正 {value} ≥ 0.90" },
+            { "min": 0.75, "max": 0.9, "score": 80, "grade": "良", "evidence": "轻度遮挡" },
+            { "min": 0.5, "max": 0.75, "score": 60, "grade": "中", "evidence": "低层遮挡明显" },
+            { "max": 0.5, "score": 40, "grade": "差", "evidence": "南向遮挡严重" }
+          ]
+        },
+        {
+          "metricCode": "LIGHT_dark_bath", "metricName": "暗卫", "unit": "-", "operator": "BOOL",
+          "internalWeight": 0.16, "higherIsBetter": false,
+          "sourceFields": ["hf_room.category=BATH", "hf_room.window_area"],
+          "basis": "《住宅项目规范》与居住体验：卫生间宜有外窗",
+          "suggestion": "暗卫需确认排气与防潮",
+          "tiers": [
+            { "boolValue": false, "score": 100, "grade": "优", "evidence": "卫生间均有外窗" },
+            { "boolValue": true, "score": 40, "grade": "差", "evidence": "存在无外窗卫生间" }
           ]
         }
       ]
@@ -42,13 +80,36 @@
       "rules": [
         {
           "metricCode": "VENT_cross", "metricName": "南北通透", "unit": "-", "operator": "BOOL",
-          "internalWeight": 1.0, "higherIsBetter": true,
-          "sourceFields": ["hf_room.orientation", "hf_room.window_area", "hf_room.x", "hf_room.w"],
-          "basis": "《住宅项目规范》通风气路与行业常识：南北开口且路径畅通可形成穿堂风",
-          "suggestion": "北向房间增加可开启窗或与客厅形成通风路径",
+          "internalWeight": 0.50, "higherIsBetter": true,
+          "sourceFields": ["hf_room.orientation", "hf_room.window_area"],
+          "basis": "南北开口且路径畅通可形成穿堂风",
+          "suggestion": "北向房间增加可开启窗",
           "tiers": [
-            { "boolValue": true, "score": 100, "grade": "优", "evidence": "满足南北通透（南/北有窗房间投影重叠 ≥0.9m）" },
-            { "boolValue": false, "score": 55, "grade": "中", "evidence": "无南北向对流路径，单侧通风" }
+            { "boolValue": true, "score": 100, "grade": "优", "evidence": "满足南北通透" },
+            { "boolValue": false, "score": 55, "grade": "中", "evidence": "单侧通风" }
+          ]
+        },
+        {
+          "metricCode": "VENT_open_window_ratio", "metricName": "可开启窗占比", "unit": "-", "operator": "BETWEEN",
+          "internalWeight": 0.30, "higherIsBetter": true,
+          "sourceFields": ["hf_room.window_area", "hf_room.window_openable_ratio"],
+          "basis": "可开启扇面积占外窗面积越高，实际换气越好",
+          "suggestion": "固定扇过多时通风会弱于图纸观感",
+          "tiers": [
+            { "min": 0.5, "score": 100, "grade": "优", "evidence": "可开启占比 {value} ≥ 0.50" },
+            { "min": 0.3, "max": 0.5, "score": 75, "grade": "良", "evidence": "可开启占比一般" },
+            { "max": 0.3, "score": 45, "grade": "差", "evidence": "可开启窗偏少" }
+          ]
+        },
+        {
+          "metricCode": "VENT_kitch_bath_exhaust", "metricName": "厨卫对外排风", "unit": "-", "operator": "BOOL",
+          "internalWeight": 0.20, "higherIsBetter": true,
+          "sourceFields": ["hf_room.category", "hf_room.window_area"],
+          "basis": "厨房与卫生间宜直接对外开窗",
+          "suggestion": "无外窗厨卫要核对竖向风道",
+          "tiers": [
+            { "boolValue": true, "score": 100, "grade": "优", "evidence": "厨卫均有外窗" },
+            { "boolValue": false, "score": 40, "grade": "差", "evidence": "存在无外窗厨卫" }
           ]
         }
       ]
@@ -57,16 +118,51 @@
       "code": "CIRC", "name": "动线与分区", "weight": 0.16,
       "rules": [
         {
-          "metricCode": "CIRC_corridor_ratio", "metricName": "走道面积占比", "unit": "%", "operator": "BETWEEN",
-          "internalWeight": 1.0, "higherIsBetter": false,
-          "sourceFields": ["hf_room.category=CORRIDOR", "hf_house_type.private_area"],
-          "basis": "设计常识：走道属无效面积，占比宜低（≤6% 为佳）",
-          "suggestion": "关注走道是否可改为收纳区/餐边柜位置",
+          "metricCode": "CIRC_corridor_ratio", "metricName": "走道面积占比", "unit": "-", "operator": "BETWEEN",
+          "internalWeight": 0.35, "higherIsBetter": false,
+          "sourceFields": ["hf_house_type.corridor_ratio"],
+          "basis": "走道属交通面积，占比宜低（≤6% 为佳）",
+          "suggestion": "长走道可改为收纳",
           "tiers": [
             { "max": 0.06, "score": 100, "grade": "优", "evidence": "走道占比 {value} ≤ 6%" },
             { "min": 0.06, "max": 0.10, "score": 75, "grade": "良", "evidence": "走道占比 6%~10%" },
             { "min": 0.10, "max": 0.14, "score": 55, "grade": "中", "evidence": "走道占比 10%~14%" },
-            { "min": 0.14, "score": 35, "grade": "差", "evidence": "走道占比 ≥14%，无效面积偏多" }
+            { "min": 0.14, "score": 35, "grade": "差", "evidence": "走道占比 ≥14%" }
+          ]
+        },
+        {
+          "metricCode": "CIRC_wet_separation", "metricName": "干湿分离", "unit": "-", "operator": "BOOL",
+          "internalWeight": 0.25, "higherIsBetter": true,
+          "sourceFields": ["hf_house_type.bath_area", "hf_room.category=BATH"],
+          "basis": "卫生间面积 ≥4㎡ 且有独立卫浴间，才计干湿分离",
+          "suggestion": "单卫且面积偏小的户型，早晚高峰会互相干扰",
+          "tiers": [
+            { "boolValue": true, "score": 100, "grade": "优", "evidence": "具备干湿分离" },
+            { "boolValue": false, "score": 50, "grade": "中", "evidence": "干湿分区不足" }
+          ]
+        },
+        {
+          "metricCode": "CIRC_public_private", "metricName": "公私分区", "unit": "m", "operator": "BETWEEN",
+          "internalWeight": 0.25, "higherIsBetter": false,
+          "sourceFields": ["hf_room.category=MASTER", "hf_room.category=LIVING"],
+          "basis": "主卧与客厅共墙重叠越短，私密性越好；低于 1.2m 视为分区清楚",
+          "suggestion": "主卧直接对客厅时注意门的朝向",
+          "tiers": [
+            { "max": 1.2, "score": 100, "grade": "优", "evidence": "共墙重叠 {value} < 1.2m" },
+            { "min": 1.2, "max": 3.0, "score": 70, "grade": "良", "evidence": "共墙重叠中等" },
+            { "min": 3.0, "score": 40, "grade": "差", "evidence": "主卧与客厅大段共墙" }
+          ]
+        },
+        {
+          "metricCode": "CIRC_meal_kitchen", "metricName": "餐厨距离", "unit": "m", "operator": "BETWEEN",
+          "internalWeight": 0.15, "higherIsBetter": false,
+          "sourceFields": ["hf_room.category=DINING", "hf_room.category=KITCHEN"],
+          "basis": "餐厅中心到厨房中心宜 ≤ 3.0m",
+          "suggestion": "餐厨过远会拉长备餐动线",
+          "tiers": [
+            { "max": 3.0, "score": 100, "grade": "优", "evidence": "餐厨距离 {value} ≤ 3m" },
+            { "min": 3.0, "max": 5.0, "score": 70, "grade": "良", "evidence": "餐厨距离 3~5m" },
+            { "min": 5.0, "score": 40, "grade": "差", "evidence": "餐厨距离 > 5m" }
           ]
         }
       ]
@@ -76,15 +172,51 @@
       "rules": [
         {
           "metricCode": "UTIL_usable_ratio", "metricName": "得房率", "unit": "-", "operator": "BETWEEN",
-          "internalWeight": 1.0, "higherIsBetter": true,
+          "internalWeight": 0.40, "higherIsBetter": true,
           "sourceFields": ["hf_house_type.private_area", "hf_house_type.gfa"],
-          "basis": "行业设计常识：高层得房率 0.75~0.80 常见，≥0.82 为优",
-          "suggestion": "同价位优先比较套内面积；核对公摊构成（电梯井/前室/管井）",
+          "basis": "高层得房率 0.75~0.80 常见，≥0.82 为优",
+          "suggestion": "同价位优先比较套内面积",
           "tiers": [
             { "min": 0.88, "score": 100, "grade": "优", "evidence": "得房率 {value} ≥ 0.880" },
             { "min": 0.82, "max": 0.88, "score": 85, "grade": "良", "evidence": "得房率 0.820~0.880" },
             { "min": 0.75, "max": 0.82, "score": 65, "grade": "中", "evidence": "得房率 0.750~0.820" },
-            { "max": 0.75, "score": 45, "grade": "差", "evidence": "得房率 < 0.750，公摊偏高" }
+            { "max": 0.75, "score": 45, "grade": "差", "evidence": "得房率 < 0.750" }
+          ]
+        },
+        {
+          "metricCode": "UTIL_irregular", "metricName": "异形占比", "unit": "-", "operator": "BETWEEN",
+          "internalWeight": 0.20, "higherIsBetter": false,
+          "sourceFields": ["hf_house_type.irr_ratio"],
+          "basis": "斜墙、凹角等异形空间降低家具摆放效率",
+          "suggestion": "异形墙注意床和柜的进深",
+          "tiers": [
+            { "max": 0.05, "score": 100, "grade": "优", "evidence": "异形占比 {value} ≤ 5%" },
+            { "min": 0.05, "max": 0.12, "score": 70, "grade": "良", "evidence": "异形占比 5%~12%" },
+            { "min": 0.12, "score": 40, "grade": "差", "evidence": "异形占比 ≥12%" }
+          ]
+        },
+        {
+          "metricCode": "UTIL_room_min_size", "metricName": "最小开间", "unit": "m", "operator": "BETWEEN",
+          "internalWeight": 0.25, "higherIsBetter": true,
+          "sourceFields": ["hf_room.w", "hf_room.h"],
+          "basis": "起居空间开间不宜小于 2.4m",
+          "suggestion": "次卧开间不足 2.4m 时双人床会顶墙",
+          "tiers": [
+            { "min": 3.0, "score": 100, "grade": "优", "evidence": "最小开间 {value} ≥ 3.0m" },
+            { "min": 2.4, "max": 3.0, "score": 75, "grade": "良", "evidence": "最小开间 2.4~3.0m" },
+            { "max": 2.4, "score": 40, "grade": "差", "evidence": "最小开间 < 2.4m" }
+          ]
+        },
+        {
+          "metricCode": "UTIL_storage", "metricName": "收纳墙长度比", "unit": "-", "operator": "BETWEEN",
+          "internalWeight": 0.15, "higherIsBetter": true,
+          "sourceFields": ["hf_house_type.storage_wall_len", "hf_house_type.gfa"],
+          "basis": "收纳墙长度相对建筑面积，越高越不容易缺柜子",
+          "suggestion": "收纳不足时看阳台和过道能否做柜",
+          "tiers": [
+            { "min": 0.06, "score": 100, "grade": "优", "evidence": "收纳比 {value} ≥ 0.06" },
+            { "min": 0.03, "max": 0.06, "score": 75, "grade": "良", "evidence": "收纳比一般" },
+            { "max": 0.03, "score": 45, "grade": "差", "evidence": "收纳墙偏短" }
           ]
         }
       ]
@@ -93,16 +225,38 @@
       "code": "QUIET", "name": "静谧与干扰", "weight": 0.10,
       "rules": [
         {
-          "metricCode": "QUIET_elevator_ratio", "metricName": "梯户比（每电梯服务户数）", "unit": "户", "operator": "BETWEEN",
-          "internalWeight": 1.0, "higherIsBetter": false,
+          "metricCode": "QUIET_elevator_ratio", "metricName": "梯户比", "unit": "户", "operator": "BETWEEN",
+          "internalWeight": 0.40, "higherIsBetter": false,
           "sourceFields": ["hf_building.units_per_floor", "hf_building.elevator_count"],
-          "basis": "设计与居住体验常识：1 梯 2 户最安静，1 梯 4 户以上人流干扰明显",
-          "suggestion": "关注本层户数与电梯厅距离；主卧是否贴电梯井",
+          "basis": "1 梯 2 户最安静，1 梯 4 户以上人流干扰明显",
+          "suggestion": "关注本层户数与电梯厅距离",
           "tiers": [
-            { "max": 1.5, "score": 100, "grade": "优", "evidence": "每电梯服务 {value} 户（≤1.5）" },
+            { "max": 1.5, "score": 100, "grade": "优", "evidence": "每电梯服务 {value} 户" },
             { "min": 1.5, "max": 2.5, "score": 80, "grade": "良", "evidence": "每电梯 1.5~2.5 户" },
             { "min": 2.5, "max": 4, "score": 60, "grade": "中", "evidence": "每电梯 2.5~4 户" },
-            { "min": 4, "score": 40, "grade": "差", "evidence": "每电梯 ≥4 户，早晚高峰拥挤与噪声" }
+            { "min": 4, "score": 40, "grade": "差", "evidence": "每电梯 ≥4 户" }
+          ]
+        },
+        {
+          "metricCode": "QUIET_road", "metricName": "临主干道", "unit": "-", "operator": "BOOL",
+          "internalWeight": 0.30, "higherIsBetter": false,
+          "sourceFields": ["hf_house_type.near_road"],
+          "basis": "卧室朝向与临路侧同向时噪声更高",
+          "suggestion": "临路户型现场听夜间噪声",
+          "tiers": [
+            { "boolValue": false, "score": 100, "grade": "优", "evidence": "不临主干道" },
+            { "boolValue": true, "score": 40, "grade": "差", "evidence": "卧室临主干道" }
+          ]
+        },
+        {
+          "metricCode": "QUIET_shaft", "metricName": "主卧贴井", "unit": "-", "operator": "BOOL",
+          "internalWeight": 0.30, "higherIsBetter": false,
+          "sourceFields": ["hf_house_type.adjacent_elevator"],
+          "basis": "主卧贴电梯井或管井会有设备噪声",
+          "suggestion": "贴井主卧建议晚上看房",
+          "tiers": [
+            { "boolValue": false, "score": 100, "grade": "优", "evidence": "主卧不贴井" },
+            { "boolValue": true, "score": 40, "grade": "差", "evidence": "主卧贴电梯井或管井" }
           ]
         }
       ]
@@ -112,15 +266,40 @@
       "rules": [
         {
           "metricCode": "GREEN_ceiling", "metricName": "室内净高", "unit": "m", "operator": "BETWEEN",
-          "internalWeight": 1.0, "higherIsBetter": true,
+          "internalWeight": 0.45, "higherIsBetter": true,
           "sourceFields": ["hf_house_type.ceiling_height"],
-          "basis": "《住宅项目规范》：卧室、起居室净高不应低于 2.40m；2.80m 以上体验明显改善",
-          "suggestion": "现场以实测净高为准（吊顶后高度差需向顾问确认）",
+          "basis": "《住宅项目规范》：卧室、起居室净高不应低于 2.40m",
+          "suggestion": "现场以吊顶后实测净高为准",
           "tiers": [
             { "min": 2.8, "score": 100, "grade": "优", "evidence": "净高 {value}m ≥ 2.80" },
             { "min": 2.6, "max": 2.8, "score": 85, "grade": "良", "evidence": "净高 2.60~2.80m" },
             { "min": 2.4, "max": 2.6, "score": 65, "grade": "中", "evidence": "净高 2.40~2.60m" },
-            { "max": 2.4, "score": 30, "grade": "差", "evidence": "净高低于 2.40m 条文下限" }
+            { "max": 2.4, "score": 30, "grade": "差", "evidence": "净高低于 2.40m" }
+          ]
+        },
+        {
+          "metricCode": "GREEN_balcony", "metricName": "有效阳台", "unit": "个", "operator": "BETWEEN",
+          "internalWeight": 0.30, "higherIsBetter": true,
+          "sourceFields": ["hf_room.category=BALCONY", "hf_house_type.balcony_count"],
+          "basis": "进深 ≥1.5m 的阳台才计为可晾晒的有效阳台",
+          "suggestion": "浅阳台只能做观景，晾晒会挤",
+          "tiers": [
+            { "min": 2, "score": 100, "grade": "优", "evidence": "有效阳台 {value} 个" },
+            { "min": 1, "max": 2, "score": 80, "grade": "良", "evidence": "有 1 个有效阳台" },
+            { "max": 1, "score": 45, "grade": "差", "evidence": "没有进深足够的阳台" }
+          ]
+        },
+        {
+          "metricCode": "GREEN_project_rate", "metricName": "绿化率", "unit": "-", "operator": "BETWEEN",
+          "internalWeight": 0.25, "higherIsBetter": true,
+          "sourceFields": ["hf_building.green_rate"],
+          "basis": "居住舒适度参考：绿化率 35% 以上体验明显更好",
+          "suggestion": "绿化率看规划图，不只看售楼处沙盘",
+          "tiers": [
+            { "min": 0.35, "score": 100, "grade": "优", "evidence": "绿化率 {value} ≥ 35%" },
+            { "min": 0.30, "max": 0.35, "score": 80, "grade": "良", "evidence": "绿化率 30%~35%" },
+            { "min": 0.25, "max": 0.30, "score": 60, "grade": "中", "evidence": "绿化率 25%~30%" },
+            { "max": 0.25, "score": 40, "grade": "差", "evidence": "绿化率 < 25%" }
           ]
         }
       ]
@@ -130,19 +309,43 @@
       "rules": [
         {
           "metricCode": "COST_total_fit", "metricName": "总价与预算匹配", "unit": "-", "operator": "BETWEEN",
-          "internalWeight": 1.0, "higherIsBetter": false,
+          "internalWeight": 0.50, "higherIsBetter": false,
           "sourceFields": ["hf_house.total_price", "sys_user.budget_max"],
-          "basis": "用户画像预算（非投资建议）：总价不超过已设定预算上限",
-          "suggestion": "如需纳入预算，可关注低楼层或同户型其他单元",
+          "basis": "总价不超过已设定预算上限（不是投资建议）",
+          "suggestion": "超预算可看同户型低楼层",
           "tiers": [
-            { "max": 1.0, "score": 100, "grade": "优", "evidence": "总价在预算内（比率 {value} ≤ 1.00）" },
+            { "max": 1.0, "score": 100, "grade": "优", "evidence": "总价在预算内（比率 {value}）" },
             { "min": 1.0, "max": 1.05, "score": 75, "grade": "良", "evidence": "超预算 ≤5%" },
             { "min": 1.05, "max": 1.15, "score": 50, "grade": "中", "evidence": "超预算 5%~15%" },
             { "min": 1.15, "score": 25, "grade": "差", "evidence": "超预算 >15%" }
           ]
+        },
+        {
+          "metricCode": "COST_unit_price_gap", "metricName": "与楼盘均价差", "unit": "-", "operator": "BETWEEN",
+          "internalWeight": 0.30, "higherIsBetter": false,
+          "sourceFields": ["hf_house.unit_price", "hf_project.avg_price"],
+          "basis": "(单价-楼盘均价)/均价，低于均价更好，不构成投资建议",
+          "suggestion": "高于楼盘均价时核对楼层和景观是否值这个差价",
+          "tiers": [
+            { "max": 0.0, "score": 100, "grade": "优", "evidence": "单价不高于楼盘均价（差比 {value}）" },
+            { "min": 0.0, "max": 0.08, "score": 80, "grade": "良", "evidence": "高于均价 8% 以内" },
+            { "min": 0.08, "max": 0.15, "score": 55, "grade": "中", "evidence": "高于均价 8%~15%" },
+            { "min": 0.15, "score": 30, "grade": "差", "evidence": "高于均价 15% 以上" }
+          ]
+        },
+        {
+          "metricCode": "COST_area_waste", "metricName": "无效面积占比", "unit": "-", "operator": "BETWEEN",
+          "internalWeight": 0.20, "higherIsBetter": false,
+          "sourceFields": ["hf_house_type.corridor_ratio", "hf_house_type.irr_ratio"],
+          "basis": "走道占比与异形占比之和，越高代表越难用的面积越多",
+          "suggestion": "无效面积高时，套内数字会比实际好用面积乐观",
+          "tiers": [
+            { "max": 0.08, "score": 100, "grade": "优", "evidence": "无效面积占比 {value} ≤ 8%" },
+            { "min": 0.08, "max": 0.15, "score": 70, "grade": "良", "evidence": "无效面积 8%~15%" },
+            { "min": 0.15, "score": 40, "grade": "差", "evidence": "无效面积 ≥15%" }
+          ]
         }
       ]
     }
-  ],
-  "_note": "本文件是 v1 规则集的**种子**（7 维 9 规则，可完整跑通评估）。T-069~T-074 继续补齐 21 指标（含 CIRC 几何类 3 条、LIGHT 遮挡/暗卫、VENT 可开启窗占比、UTIL 异形/最小开间/收纳、QUIET 临路/贴井、GREEN 阳台/绿化率、COST 单价差/无效面积成本），并由 CI 用 contracts/scoring-rule.schema.json 校验本文件。规则发布后以 DB（eval_rule_set/eval_rule）为唯一真源，本文件仅用于重建演示环境。"
+  ]
 }

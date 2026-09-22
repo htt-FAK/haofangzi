@@ -1,6 +1,5 @@
 package com.zhq.haofangzi.engine;
 
-import java.util.EnumMap;
 import java.util.LinkedHashMap;
 import java.util.Map;
 import java.util.Optional;
@@ -79,7 +78,7 @@ public class ScoringEngine {
 
         /** 内置模板权重（发布前由管理员校对；模板之和必须归一为 1） */
         public Map<String, Double> weights() {
-            Map<String, Double> m = new EnumMap<>(String.class);
+            Map<String, Double> m = new LinkedHashMap<>();
             switch (this) {
                 case FAMILY_3 -> {
                     m.put("LIGHT", 0.20); m.put("VENT", 0.20); m.put("CIRC", 0.18);
@@ -103,11 +102,10 @@ public class ScoringEngine {
         }
 
         public static CrowdTemplate of(String code) {
-            try {
-                return code == null || code.isBlank() ? GENERAL : valueOf(code.toUpperCase());
-            } catch (IllegalArgumentException e) {
+            if (code == null || code.isBlank()) {
                 return GENERAL;
             }
+            return valueOf(code.toUpperCase());
         }
     }
 }

@@ -5,25 +5,25 @@
 
 ## Layer 1：契约与脚手架
 - [x] T-001 在 `contracts/openapi.yaml` 冻结 auth/user/admin-user 端点（前后端并行前置）→ FR-01~06
-- [ ] T-002 [P] 建表 `sys_user`、`sys_audit_log`，写入 `database/schema.sql` 与 MyBatis-Plus 实体 → FR-04
-- [ ] T-003 [P] `SecurityConfig`：JWT 过滤器 + 角色表达式 + CORS 白名单 → FR-03/06
+- [x] T-002 [P] 建表 `sys_user`、`sys_audit_log`，写入 `database/schema.sql` 与 MyBatis-Plus 实体 → FR-04
+- [x] T-003 [P] `SecurityConfig`：JWT 过滤器 + 角色表达式 + CORS 白名单 → FR-03/06
 
 ## Layer 2：后端实现
-- [ ] T-004 注册（手机号格式、图形码校验、口令强度、唯一性）与散列存储 → FR-01，AC-07
-- [ ] T-005 登录：口令 / 短信码两种方式 + Mock 短信通道 → FR-02
-- [ ] T-006 失败锁定计数器（Caffeine）+ `40305` 剩余时间 → FR-02，AC-01
-- [ ] T-007 `POST /auth/refresh` 静默续期（`iat` 校验，仅一次）→ FR-03，AC-06
-- [ ] T-008 画像读写：`PUT /users/me/profile` + `completeness` 计算 → FR-04/05，AC-02/03
+- [x] T-004 注册（手机号格式、图形码校验、口令强度、唯一性）与散列存储 → FR-01，AC-07
+- [x] T-005 登录：口令 / 短信码两种方式 + Mock 短信通道 → FR-02
+- [x] T-006 失败锁定计数器（Caffeine）+ `40305` 剩余时间 → FR-02，AC-01
+- [x] T-007 `POST /auth/refresh` 静默续期（`iat` 校验，仅一次）→ FR-03，AC-06
+- [x] T-008 画像读写：`PUT /users/me/profile` + `completeness` 计算 → FR-04/05，AC-02/03
 - [ ] T-009 修改口令、退出登录 → FR-02
-- [ ] T-010 管理端：分页查询、停用/启用、重置口令 → FR-07，AC-04
+- [x] T-010 管理端：分页查询、停用/启用、重置口令 → FR-07，AC-04
 - [ ] T-011 注销与匿名化（事务）→ FR-08，AC-05
 - [ ] T-012 `@Audit` AOP 切面 + 异步落库（含 IP/UA）→ FR-10
 
 ## Layer 3：前端
 - [ ] T-013 [P] 登录/注册页（分步校验、口令强度条、倒计时）
 - [ ] T-014 [P] 画像向导 4 步 + Pinia store + 本地持久化 → AC-02
-- [ ] T-015 axios 拦截器：401 跳登录带回跳、错误码 toast 映射 → AC-06
-- [ ] T-016 管理端用户列表页（Element Plus Table + 操作确认框）
+- [x] T-015 axios 拦截器：401 跳登录带回跳、错误码 toast 映射 → AC-06
+- [x] T-016 管理端用户列表页（Element Plus Table + 操作确认框）
 
 ## Layer 4：验证与文档
 - [ ] T-017 单测 ≥ 8 例（含锁定、完整度、匿名化）；MockMvc 全链路 1 例 → 宪法第四条 1

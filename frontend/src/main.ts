@@ -3,6 +3,7 @@ import { createPinia } from 'pinia'
 import ElementPlus from 'element-plus'
 import { createRouter, createWebHistory } from 'vue-router'
 import 'element-plus/dist/index.css'
+import './styles/theme.css'
 import App from './App.vue'
 
 const router = createRouter({
@@ -21,11 +22,21 @@ const router = createRouter({
   ],
 })
 
+function currentRole(): string | null {
+  try {
+    const u = JSON.parse(localStorage.getItem('hf-user') || 'null')
+    return u?.role ?? null
+  } catch {
+    return null
+  }
+}
+
 // 路由守卫：未登录跳登录并带回跳（AC-28）；角色不符回首页
 router.beforeEach((to) => {
   const token = localStorage.getItem('hf-token')
-  if (to.meta.auth && !token) return { name: 'login', query: { redirect: to.fullPath } }
-  if (to.meta.roles && !token) return { name: 'login' }
+  const roles = to.meta.roles as string[] | undefined
+  if ((to.meta.auth || roles) && !token) return { name: 'login', query: { redirect: to.fullPath } }
+  if (roles && !roles.includes(currentRole() || '')) return { name: 'home' }
   return true
 })
 

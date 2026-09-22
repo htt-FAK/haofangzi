@@ -32,6 +32,11 @@ public class SelectionController {
         return ApiResponse.ok(selectionService.currentLock(uid(me)));                    // null → 前端隐藏倒计时
     }
 
+    @PostMapping("/locks/{intentionNo}/renew")
+    public ApiResponse<SelectionDto.LockResult> renew(@PathVariable String intentionNo, Principal me) {
+        return ApiResponse.ok(selectionService.renewByIntention(intentionNo, uid(me)));
+    }
+
     @PostMapping("/locks/{intentionNo}/cancel")
     public ApiResponse<Void> cancel(@PathVariable String intentionNo, Principal me) {
         selectionService.cancel(intentionNo, uid(me));

@@ -56,7 +56,7 @@ function draw() {
     ctx.fillRect(x0, y0, w, h)
     ctx.globalAlpha = 1
     ctx.lineWidth = selected ? 2 : 1
-    ctx.strokeStyle = selected ? '#1668dc' : '#666'
+    ctx.strokeStyle = selected ? '#215e7a' : '#8a8a84'
     ctx.strokeRect(x0, y0, w, h)
 
     // ③ 窗：墙上三线；门：留缺口 + 1/4 弧
@@ -66,7 +66,7 @@ function draw() {
       ctx.moveTo(sx, sy)
       ctx.lineTo(sx + win.width * scale, sy)
       ctx.lineWidth = 3
-      ctx.strokeStyle = '#2b6cb0'
+      ctx.strokeStyle = '#215e7a'
       ctx.stroke()
     })
     ;(r.doors ?? []).forEach((d) => {
@@ -147,8 +147,8 @@ watch(() => [props.geo, labelMode.value, zoom.value], () => nextTick(draw), { de
 </template>
 
 <style scoped>
-.plan { border: 1px solid #eee; border-radius: 8px; background: #fcfcfc; }
-.bar { display: flex; align-items: center; gap: 12px; padding: 8px 10px; border-bottom: 1px solid #eee; }
-.tip { color: #888; font-size: 12px; }
-canvas { width: 100%; display: block; cursor: crosshair; }
+.plan { border: 1px solid var(--hf-border); border-radius: var(--hf-radius-m); background: var(--hf-surface); overflow: hidden; }
+.bar { display: flex; align-items: center; gap: 12px; padding: 9px 12px; border-bottom: 1px solid var(--hf-border); background: var(--hf-surface); flex-wrap: wrap; }
+.tip { color: var(--hf-text-3); font-size: 12px; }
+canvas { width: 100%; display: block; cursor: crosshair; background: #f7f6f2; }
 </style>

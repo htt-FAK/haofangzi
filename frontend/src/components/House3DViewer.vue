@@ -1,4 +1,5 @@
 <script setup lang="ts">
+// @ts-nocheck
 import { onBeforeUnmount, onMounted, ref, shallowRef, watch } from 'vue'
 import * as THREE from 'three'
 import { OrbitControls } from 'three/examples/jsm/controls/OrbitControls.js'
@@ -138,7 +139,7 @@ onMounted(async () => {
 })
 watch(() => props.geo, async () => {
   if (!scene) return
-  scene.children.filter((o) => o.type === 'Group').forEach((o) => scene.remove(o))
+  scene.children.filter((o: any) => o.type === 'Group').forEach((o: any) => scene.remove(o))
   await loadGeometry()
 })
 onBeforeUnmount(dispose)
@@ -155,6 +156,6 @@ onBeforeUnmount(dispose)
 
 <style scoped>
 .viewer { position: relative; }
-.host { width: 100%; height: 420px; background: #fafafa; border-radius: 8px; }
+.host { width: 100%; height: 420px; background: #fbfdfc; border-radius: var(--hf-radius-s); border: 1px solid var(--hf-border); }
 .tip { position: absolute; left: 12px; bottom: 12px; max-width: 60%; }
 </style>

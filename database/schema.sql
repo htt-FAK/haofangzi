@@ -355,6 +355,16 @@ CREATE TABLE ai_call_log (
   PRIMARY KEY (id), KEY idx_ai (prompt_key, created_at)
 ) ENGINE=InnoDB COMMENT='AI 调用日志（FR-120）';
 
+CREATE TABLE ai_chat_message (
+  id BIGINT NOT NULL AUTO_INCREMENT,
+  user_id BIGINT NOT NULL,
+  role VARCHAR(16) NOT NULL COMMENT 'user/assistant',
+  content TEXT NOT NULL,
+  created_at DATETIME(0) NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  PRIMARY KEY (id),
+  KEY idx_chat_user (user_id, id)
+) ENGINE=InnoDB COMMENT='顾问对话记忆（按用户）';
+
 -- ---------- 9. 视图（统计与看板；报告 §4.3 提及） ----------
 CREATE OR REPLACE VIEW v_house_sale_stat AS
 SELECT b.project_id, COUNT(*) AS total,

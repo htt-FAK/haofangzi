@@ -9,8 +9,8 @@ import java.util.List;
 import java.util.Map;
 
 /**
- * 7 个代表指标计算器的落位（spec 004 §2 指标登记表；其余 14 个按 {@code specs/004/tasks.md}
- * T-069~T-074 分散到同包文件，保持"一个指标一个类"的可测试性）。
+ * 已落地的代表指标。同包 {@code MoreMetrics} 补齐规格登记表其余指标，
+ * 仍保持「一个指标一个类、缺失即数据不足」。
  *
  * <p>共同约定（见 {@link MetricCalculator}）：不抛异常、不返回 NaN、缺失即 insufficient。
  * 这里的类为包级私有，仅注册为 Bean，外部一律通过 {@code metric_code} 访问。

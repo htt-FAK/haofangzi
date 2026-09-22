@@ -20,8 +20,15 @@ public class GlobalExceptionHandler {
     public ApiResponse<Map<String, Object>> biz(BizException e, HttpServletRequest req) {
         log.warn("业务异常 {} {} code={} msg={}", req.getMethod(), req.getRequestURI(), e.getCode(), e.getMessage());
         Map<String, Object> data = new LinkedHashMap<>();
-        if (e.getPayload() != null) {
-            data.put("detail", e.getPayload());
+        Object payload = e.getPayload();
+        if (payload instanceof Map<?, ?> map) {
+            map.forEach((k, v) -> data.put(String.valueOf(k), v));
+            data.put("detail", map);
+        } else if (payload instanceof java.util.List<?> list) {
+            data.put("alternatives", list);
+            data.put("detail", list);
+        } else if (payload != null) {
+            data.put("detail", payload);
         }
         return ApiResponse.fail(e.getCode(), e.getMessage(), data.isEmpty() ? null : data);
     }

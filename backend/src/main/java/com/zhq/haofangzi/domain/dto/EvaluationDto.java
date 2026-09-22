@@ -31,6 +31,7 @@ public final class EvaluationDto {
         private Long evaluationId;
         private Long houseTypeId;
         private String houseTypeName;
+        private Double gfa;
         private Long houseId;
         private String setVersion;
         private double total;

@@ -2,8 +2,8 @@
 
 ## Layer 1 网关与治理
 - [x] T-119 `contracts/prompt-templates.md` 定稿 4 个模板（I1/I2/I3/I4）与输出 schema
-- [ ] T-120 `LlmClient` 接口 + `OpenAiCompatibleClient`（timeout 8s、retry 1、`response_format=json_object`）→ FR-110
-- [ ] T-121 `MockLlmClient`（确定性模板产出，四能力全覆盖）→ FR-112，AC-66
+- [x] T-120 `LlmClient` 接口 + `OpenAiCompatibleClient`（timeout 8s、retry 1、`response_format=json_object`）→ FR-110
+- [x] T-121 `MockLlmClient`（确定性模板产出，四能力全覆盖）→ FR-112，AC-66
 - [ ] T-122 `PromptTemplateStore`（仓库内 md/yaml 模板 + `@vN`）→ FR-110/119
 - [ ] T-123 `PayloadSanitizer`（白名单 + PII 正则兜底 + 候选裁剪到 30）→ FR-122
 - [ ] T-124 `JsonSchemaGuard`（schema 校验 + `metricCode` 引用白名单）→ FR-111/116，AC-62/64
@@ -11,7 +11,7 @@
 
 ## Layer 2 能力实现
 - [ ] T-126 I1 `RuleDraftService.generate()`：基线装配 → LLM → 仅允许改 weight/tiers → DRAFT 入库 → diff 视图数据 → FR-114/115，AC-60/61
-- [ ] T-127 I1 发布门禁（`source=AI` 必须 `confirm=true`）→ AC-61
+- [x] T-127 I1 发布门禁（`source=AI` 必须 `confirm=true`）→ AC-61
 - [ ] T-128 I2 `CompareService` 接入（结论解析 + 无引用句剔除 + `ai_generated` 落库）→ FR-116
 - [ ] T-129 I3 `AdvisorService`：硬条件召回（SQL）→ LLM 白名单内排序 → 理由/风险结构校验 → FR-117，AC-63
 - [ ] T-130 I4 `SceneCodeService`：geometry → Three.js 函数体（纯模板版兜底）→ AC-67
