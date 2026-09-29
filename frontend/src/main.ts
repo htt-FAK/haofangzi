@@ -31,13 +31,52 @@ function currentRole(): string | null {
   }
 }
 
-// 路由守卫：未登录跳登录并带回跳（AC-28）；角色不符回首页
-router.beforeEach((to) => {
-  const token = localStorage.getItem('hf-token')
+/** 演示环境免密自登录辅助：确保使用者打开任何页面无需手动输入密码 */
+async function autoLoginDemoUser(): Promise<boolean> {
+  try {
+    // 先触发演示短信固定验证码通道（123456）
+    await fetch('/api/auth/code', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ phone: '13800000001' }),
+    })
+    const res = await fetch('/api/auth/login', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ phone: '13800000001', smsCode: '123456' }),
+    })
+    const json = await res.json()
+    if (json.code === 0 && json.data?.token) {
+      localStorage.setItem('hf-token', json.data.token)
+      if (json.data.refreshToken) localStorage.setItem('hf-refresh', json.data.refreshToken)
+      localStorage.setItem('hf-user', JSON.stringify(json.data.user))
+      return true
+    }
+  } catch {
+    // 降级兜底预填
+  }
+  return false
+}
+
+// 路由守卫：优先自动静默免密登入演示账号（满足“不要设置密码”需求）
+router.beforeEach(async (to) => {
+  let token = localStorage.getItem('hf-token')
   const roles = to.meta.roles as string[] | undefined
-  if ((to.meta.auth || roles) && !token) return { name: 'login', query: { redirect: to.fullPath } }
+  if ((to.meta.auth || roles) && !token) {
+    const ok = await autoLoginDemoUser()
+    if (ok) {
+      token = localStorage.getItem('hf-token')
+    } else {
+      return { name: 'login', query: { redirect: to.fullPath } }
+    }
+  }
   if (roles && !roles.includes(currentRole() || '')) return { name: 'home' }
   return true
 })
+
+// 初始启动时若无登录态则静默就绪
+if (!localStorage.getItem('hf-token')) {
+  void autoLoginDemoUser()
+}
 
 createApp(App).use(createPinia()).use(router).use(ElementPlus).mount('#app')

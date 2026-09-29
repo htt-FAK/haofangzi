@@ -113,192 +113,731 @@ async function copyCode() {
 }
 
 function addCompare() {
-  if (compare.add(id).ok) ElMessage.success('已加入对比')
+  const r = compare.add(id)
+  if (r.ok) {
+    ElMessage.success('已加入多户型对比')
+  } else {
+    ElMessage.warning(r.reason ?? '无法加入对比')
+  }
 }
 
 onMounted(load)
 </script>
 
 <template>
-  <div v-if="loading" class="detail-skel" aria-busy="true">载入户型图纸…</div>
+  <div v-if="loading" class="detail-skel" aria-busy="true">
+    <div class="skel-spinner"></div>
+    <p>正在载入建筑 CAD 平面几何图纸…</p>
+  </div>
   <div v-else-if="geo" class="page">
-    <header class="head">
-      <div>
-        <p class="hf-kicker">{{ meta.code || '户型' }}</p>
-        <h1>{{ title }}</h1>
-        <p class="spec">{{ meta.gfa }}㎡ · {{ meta.roomCount || geo.rooms?.length || '—' }} 房 · {{ ORIENT[meta.orientation] || meta.orientation || '—' }}</p>
+    <!-- 顶部面包屑与标题栏 -->
+    <div class="breadcrumb-bar">
+      <router-link to="/" class="back-link">
+        <svg viewBox="0 0 16 16" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2">
+          <path d="M10 13L5 8l5-5" stroke-linecap="round" stroke-linejoin="round" />
+        </svg>
+        返回户型图册
+      </router-link>
+      <span class="bread-sep">/</span>
+      <span class="bread-curr">{{ meta.code }} · {{ title }}</span>
+    </div>
+
+    <header class="head-banner">
+      <div class="head-left">
+        <div class="code-badge">
+          <span class="code-dot"></span>
+          {{ meta.code || 'CAD-DWG' }}
+        </div>
+        <h1 class="page-title">{{ title }}</h1>
+        <div class="specs-ribbon">
+          <span class="ribbon-tag"><strong>{{ meta.gfa }}</strong> ㎡ 建面</span>
+          <span class="ribbon-tag"><strong>{{ meta.roomCount || geo.rooms?.length || '—' }}</strong> 居室</span>
+          <span class="ribbon-tag">主朝向 <strong>{{ ORIENT[meta.orientation] || meta.orientation || '—' }}</strong></span>
+          <span v-if="geo.privateArea" class="ribbon-tag">套内 <strong>{{ geo.privateArea }}</strong> ㎡</span>
+        </div>
       </div>
-      <div class="head-side">
-        <p v-if="priceText" class="price hf-num">{{ priceText }}</p>
-        <el-button type="primary" @click="router.push({ name: 'evaluate', params: { id } })">评估</el-button>
+      <div class="head-right">
+        <div v-if="priceText" class="price-box">
+          <span class="price-sub">参考指导总价</span>
+          <span class="price-main hf-num">{{ priceText }}</span>
+        </div>
+        <div class="head-actions">
+          <el-button
+            type="primary"
+            size="large"
+            class="action-btn-primary"
+            @click="router.push({ name: 'evaluate', params: { id } })"
+          >
+            <AppIcon name="gauge" :size="16" />
+            智能评估报告
+          </el-button>
+          <el-button size="large" class="action-btn-sec" @click="addCompare">
+            加入对比
+          </el-button>
+        </div>
       </div>
     </header>
 
-    <div class="detail">
-    <div class="left">
-      <el-tabs v-model="tab" class="view-tabs">
-        <el-tab-pane label="2D 图纸" name="2d">
-          <FloorPlan2D :geo="geo" :selected="room?.name" @room-select="room = $event" />
-        </el-tab-pane>
-        <el-tab-pane label="3D 空间" name="3d" lazy>
-          <House3DViewer v-if="webglOk" :geo="geo" />
-          <el-alert v-else type="warning" :closable="false" title="当前环境不支持 WebGL，已自动回落 2D 图纸" />
-          <el-button class="code-btn" @click="codeOpen = true">查看生成代码</el-button>
-          <el-drawer v-model="codeOpen" title="3D 初始化代码" size="420px">
-            <p class="code-note">只供复制。系统不执行这段代码。</p>
-            <pre class="code-box">{{ generated }}</pre>
-            <el-button type="primary" @click="copyCode">复制</el-button>
-          </el-drawer>
-        </el-tab-pane>
-        <el-tab-pane label="720° 全景" name="pano" lazy>
-          <el-empty description="该户型暂无全景素材（不影响评估与选房）">
-            <el-button @click="tab = '2d'">回到 2D 图纸</el-button>
-          </el-empty>
-        </el-tab-pane>
-        <el-tab-pane label="参数表" name="param">
-          <el-descriptions :column="2" border size="small">
-            <el-descriptions-item v-for="p in params" :key="p[0]" :label="p[0]">{{ p[1] }}</el-descriptions-item>
-          </el-descriptions>
-          <p class="note">尺寸与参数按公开规范口径整理，现场实测误差 ±5%；本表不构成合规结论。</p>
-        </el-tab-pane>
-      </el-tabs>
-    </div>
+    <!-- 主展示区与侧栏联动 -->
+    <div class="detail-layout">
+      <!-- 左侧图纸/空间视图 -->
+      <div class="canvas-col">
+        <div class="view-tabs-card">
+          <el-tabs v-model="tab" class="view-tabs">
+            <el-tab-pane label="📐 2D CAD 平面图" name="2d">
+              <FloorPlan2D :geo="geo" :selected="room?.name" @room-select="room = $event" />
+            </el-tab-pane>
 
-    <aside class="side">
-      <el-card shadow="never" class="room-card">
-        <template #header>
-          <span class="room-title">
-            <AppIcon :name="room ? 'plan' : 'search'" :size="15" />
-            {{ room ? room.name : '未选中房间' }}
-          </span>
-        </template>
-        <template v-if="room">
-          <div class="kv"><span class="k">类型</span><span class="v">{{ room.category }}</span></div>
-          <div class="kv"><span class="k">朝向</span><span class="v">{{ room.orientation || '—' }}</span></div>
-          <div class="kv"><span class="k">面积</span><span class="v hf-num">{{ room.area?.toFixed(2) }} ㎡（{{ room.w }}×{{ room.h }} m）</span></div>
-          <div class="kv"><span class="k">窗面积</span><span class="v hf-num">{{ room.windowArea ?? 0 }} ㎡</span></div>
-          <div class="kv">
-            <span class="k">窗地比</span>
-            <span class="v hf-num">
-              {{ wfa === null ? '—' : wfa.toFixed(3) }}
-              <el-tag v-if="wfa !== null && wfa < 0.143" size="small" type="warning" class="warn-tag">低于 1/7 条文参考值</el-tag>
-            </span>
-          </div>
-          <p class="hint">该值对应评分明细中的 <code>LIGHT_wfa</code> / <code>LIGHT_dark_bath</code>。</p>
-        </template>
-        <p v-else class="hint empty-hint">点击左侧任一房间查看参数，并与评分明细联动（FR-15）。</p>
-      </el-card>
+            <el-tab-pane label="🏢 3D 空间仿真" name="3d" lazy>
+              <div class="viewer-3d-wrap">
+                <House3DViewer v-if="webglOk" :geo="geo" />
+                <el-alert v-else type="warning" :closable="false" title="当前环境不支持 WebGL 硬件加速，已自动回落 2D CAD 图纸" />
+                <div class="threed-bar">
+                  <span class="threed-tip">Three.js WebGL 室内体块仿真 · 支持鼠标拖拽旋转缩放</span>
+                  <el-button size="small" plain class="code-btn" @click="codeOpen = true">
+                    查看生成代码
+                  </el-button>
+                </div>
+                <el-drawer v-model="codeOpen" title="3D 场景生成代码" size="440px">
+                  <p class="code-note">系统根据构件几何实时生成的 Three.js 初始化脚本，仅供导出与查验。</p>
+                  <pre class="code-box">{{ generated }}</pre>
+                  <template #footer>
+                    <el-button type="primary" @click="copyCode">复制代码到剪贴板</el-button>
+                  </template>
+                </el-drawer>
+              </div>
+            </el-tab-pane>
 
-      <div class="cta">
-        <el-button type="primary" size="large" class="cta-main" @click="router.push({ name: 'evaluate', params: { id } })">
-          <AppIcon name="gauge" :size="16" /> 评估此户型
-        </el-button>
-        <div class="cta-row">
-          <el-button @click="addCompare">加入对比</el-button>
-          <el-button type="success" :loading="picking" @click="openSelection">模拟选房</el-button>
+            <el-tab-pane label="🌐 720° 全景" name="pano" lazy>
+              <div class="empty-view">
+                <div class="empty-icon-box">🌐</div>
+                <p class="empty-title">该户型暂未挂载 720° VR 全景切片</p>
+                <p class="empty-sub">不影响 2D 尺寸实测、3D 空间仿真与规则打分评级。</p>
+                <el-button type="primary" plain @click="tab = '2d'">返回 2D 平面图</el-button>
+              </div>
+            </el-tab-pane>
+
+            <el-tab-pane label="📋 参数规范表" name="param">
+              <div class="param-table-wrap">
+                <el-descriptions :column="2" border size="default" class="param-desc">
+                  <el-descriptions-item v-for="p in params" :key="p[0]" :label="p[0]">
+                    <span class="hf-num">{{ p[1] }}</span>
+                  </el-descriptions-item>
+                </el-descriptions>
+                <div class="param-note">
+                  <svg viewBox="0 0 16 16" width="13" height="13" fill="none" stroke="currentColor" stroke-width="1.6">
+                    <circle cx="8" cy="8" r="7" />
+                    <line x1="8" y1="5" x2="8" y2="9" />
+                    <circle cx="8" cy="11.5" r="0.6" fill="currentColor" />
+                  </svg>
+                  尺寸与构件参数按公开建筑方案口径整理，实测公差 ±5%；本参数表用于支撑 7 大维度规则量化评估。
+                </div>
+              </div>
+            </el-tab-pane>
+          </el-tabs>
         </div>
-        <el-button text class="back-link" @click="router.push({ name: 'home' })">← 继续选房</el-button>
       </div>
-    </aside>
 
-    <el-dialog v-model="pickOpen" title="选择在售房源" width="560px">
-      <el-table :data="houses" size="small" max-height="360" class="pick-tbl" @row-click="goLock">
-        <el-table-column label="楼栋" width="80">
-          <template #default="{ row }">{{ row.buildingCode || row.buildingcode || '—' }}</template>
-        </el-table-column>
-        <el-table-column label="楼层" width="70">
-          <template #default="{ row }">{{ row.floorNo ?? row.floor_no }}</template>
-        </el-table-column>
-        <el-table-column label="房号" width="80">
-          <template #default="{ row }">{{ row.roomNo || row.room_no }}</template>
-        </el-table-column>
-        <el-table-column label="总价" min-width="120">
-          <template #default="{ row }"><span class="hf-num">{{ row.totalPrice ? (Number(row.totalPrice) / 10000).toFixed(1) + ' 万' : '—' }}</span></template>
-        </el-table-column>
-        <el-table-column prop="saleStatus" label="状态" width="90" />
-        <el-table-column label="操作" width="70">
-          <template #default="{ row }">
-            <el-button size="small" text type="primary" @click.stop="goLock(row)">选择</el-button>
-          </template>
-        </el-table-column>
-      </el-table>
-      <p class="pick-tip">点击任意一行或「选择」进入模拟锁定</p>
-      <template #footer>
-        <el-button @click="pickOpen = false">取消</el-button>
-      </template>
-    </el-dialog>
+      <!-- 右侧房间参数与快速动作栏 -->
+      <aside class="side-col">
+        <!-- 房间实时联动卡片 -->
+        <div class="room-inspect-card">
+          <div class="inspect-header">
+            <span class="inspect-title">
+              <AppIcon :name="room ? 'plan' : 'search'" :size="16" />
+              {{ room ? room.name : '构件参数联动' }}
+            </span>
+            <span v-if="room" class="room-cat-badge">{{ room.category }}</span>
+          </div>
+
+          <div v-if="room" class="inspect-body">
+            <div class="inspect-kv">
+              <span class="k">功能分区</span>
+              <span class="v">{{ room.category }}</span>
+            </div>
+            <div class="inspect-kv">
+              <span class="k">构件朝向</span>
+              <span class="v">{{ room.orientation || '—' }}</span>
+            </div>
+            <div class="inspect-kv">
+              <span class="k">建筑面积</span>
+              <span class="v hf-num"><strong>{{ room.area?.toFixed(2) }}</strong> ㎡ ({{ room.w }}×{{ room.h }}m)</span>
+            </div>
+            <div class="inspect-kv">
+              <span class="k">采光外窗</span>
+              <span class="v hf-num"><strong>{{ room.windowArea ?? 0 }}</strong> ㎡</span>
+            </div>
+            <div class="inspect-kv highlight-row">
+              <span class="k">窗地比 (WFA)</span>
+              <div class="v-wrap">
+                <span class="v hf-num font-bold">{{ wfa === null ? '—' : wfa.toFixed(3) }}</span>
+                <el-tag v-if="wfa !== null && wfa < 0.143" size="small" type="warning" effect="dark" class="warn-pill">
+                  低于 1/7 规范标准
+                </el-tag>
+                <el-tag v-else-if="wfa !== null" size="small" type="success" effect="plain" class="warn-pill">
+                  符合采光规范
+                </el-tag>
+              </div>
+            </div>
+            <p class="inspect-hint">
+              实时映射评分明细中 <code>LIGHT_wfa</code> 与 <code>LIGHT_dark_bath</code> 依据。
+            </p>
+          </div>
+          <div v-else class="inspect-empty">
+            <div class="click-pulse"></div>
+            <p>请点击左侧 2D 平面图中的任意房间</p>
+            <span>即可实时查看该房间面积、开间、进深与采光窗地比指标。</span>
+          </div>
+        </div>
+
+        <!-- 选房与评估动作 -->
+        <div class="side-actions-card">
+          <h4 class="card-sec-title">快捷操作</h4>
+          <el-button
+            type="primary"
+            size="large"
+            class="cta-evaluate-btn"
+            @click="router.push({ name: 'evaluate', params: { id } })"
+          >
+            <AppIcon name="gauge" :size="16" />
+            查看 7 维全景评估
+          </el-button>
+          
+          <div class="btn-grid-two">
+            <el-button size="default" @click="addCompare">
+              加入对比
+            </el-button>
+            <el-button type="success" size="default" :loading="picking" @click="openSelection">
+              模拟选房
+            </el-button>
+          </div>
+        </div>
+      </aside>
+
+      <!-- 模拟在售房源弹窗 -->
+      <el-dialog v-model="pickOpen" title="选择在售模拟房源（10 分钟锁房）" width="600px" class="pick-modal">
+        <el-table :data="houses" size="default" max-height="380" class="pick-tbl" @row-click="goLock">
+          <el-table-column label="楼栋" width="90">
+            <template #default="{ row }">
+              <span class="font-bold">{{ row.buildingCode || row.buildingcode || '—' }}</span>
+            </template>
+          </el-table-column>
+          <el-table-column label="楼层" width="80">
+            <template #default="{ row }">{{ row.floorNo ?? row.floor_no }} F</template>
+          </el-table-column>
+          <el-table-column label="房号" width="90">
+            <template #default="{ row }">{{ row.roomNo || row.room_no }}</template>
+          </el-table-column>
+          <el-table-column label="指导总价" min-width="120">
+            <template #default="{ row }">
+              <span class="hf-num font-bold">{{ row.totalPrice ? (Number(row.totalPrice) / 10000).toFixed(1) + ' 万' : '—' }}</span>
+            </template>
+          </el-table-column>
+          <el-table-column prop="saleStatus" label="状态" width="90">
+            <template #default="{ row }">
+              <el-tag size="small" :type="row.saleStatus === 'AVAILABLE' ? 'success' : 'info'">
+                {{ row.saleStatus === 'AVAILABLE' ? '在售' : row.saleStatus }}
+              </el-tag>
+            </template>
+          </el-table-column>
+          <el-table-column label="操作" width="80" align="center">
+            <template #default="{ row }">
+              <el-button size="small" type="primary" plain @click.stop="goLock(row)">锁定</el-button>
+            </template>
+          </el-table-column>
+        </el-table>
+        <p class="pick-tip">点击任意一行进入锁房流程，意向锁定有效期 10 分钟。</p>
+        <template #footer>
+          <el-button @click="pickOpen = false">关闭</el-button>
+        </template>
+      </el-dialog>
     </div>
   </div>
 </template>
 
 <style scoped>
-.page { display: flex; flex-direction: column; gap: 18px; min-width: 0; }
-.head {
+.page {
   display: flex;
-  align-items: flex-end;
+  flex-direction: column;
+  gap: 24px;
+}
+
+/* Breadcrumb */
+.breadcrumb-bar {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  font-size: 13px;
+  color: var(--hf-text-3);
+}
+
+.back-link {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  color: var(--hf-text-2);
+  text-decoration: none;
+  font-weight: 600;
+  transition: color var(--hf-dur);
+}
+.back-link:hover {
+  color: var(--hf-primary);
+}
+
+.bread-sep {
+  color: var(--hf-border-strong);
+}
+
+.bread-curr {
+  color: var(--hf-text-3);
+}
+
+/* Head Banner */
+.head-banner {
+  display: flex;
+  align-items: center;
   justify-content: space-between;
-  gap: 16px;
+  gap: 24px;
+  padding: 24px 28px;
+  background: #ffffff;
+  border: 1px solid var(--hf-border);
+  border-radius: var(--hf-radius-l);
+  box-shadow: var(--hf-shadow-sm);
   flex-wrap: wrap;
 }
-.head h1 { font-size: clamp(24px, 3vw, 32px); letter-spacing: -0.03em; margin: 6px 0 4px; }
-.spec { color: var(--hf-text-2); font-size: 14px; }
-.head-side { display: flex; align-items: center; gap: 14px; }
-.price { font-size: 22px; font-weight: 700; letter-spacing: -0.03em; }
-.detail { display: grid; grid-template-columns: minmax(0, 1fr) 300px; gap: 18px; align-items: start; min-width: 0; }
-.detail-skel {
-  min-height: 360px;
-  display: grid;
-  place-items: center;
-  color: var(--hf-text-3);
-  background: var(--hf-surface);
-  border: 1px solid var(--hf-border);
-  border-radius: var(--hf-radius-m);
+
+.head-left {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
 }
 
-.left { min-width: 0; }
-.left :deep(.el-tabs__nav-wrap::after) { height: 1px; background-color: var(--hf-border); }
-.left :deep(.el-tabs__item) { font-weight: 500; }
-.left :deep(.el-tabs__item.is-active) { color: var(--hf-primary); }
-.left :deep(.el-tabs__active-bar) { background-color: var(--hf-primary); }
-.left :deep(.el-tabs__content) {
+.code-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 12px;
+  font-weight: 700;
+  color: var(--hf-primary);
+  background: var(--hf-primary-soft);
+  padding: 2px 10px;
+  border-radius: 9999px;
+  width: fit-content;
+}
+
+.code-dot {
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: var(--hf-primary);
+}
+
+.page-title {
+  font-size: clamp(26px, 3.2vw, 36px);
+  font-weight: 800;
+  color: var(--hf-ink);
+  letter-spacing: -0.03em;
+  margin: 0;
+}
+
+.specs-ribbon {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex-wrap: wrap;
+}
+
+.ribbon-tag {
+  font-size: 13px;
+  color: var(--hf-text-2);
+  background: var(--hf-canvas-subtle);
+  padding: 4px 10px;
+  border-radius: 6px;
+}
+
+.ribbon-tag strong {
+  color: var(--hf-ink);
+}
+
+.head-right {
+  display: flex;
+  align-items: center;
+  gap: 20px;
+  flex-wrap: wrap;
+}
+
+.price-box {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+}
+
+.price-sub {
+  font-size: 11.5px;
+  color: var(--hf-text-3);
+  font-weight: 500;
+}
+
+.price-main {
+  font-size: 26px;
+  font-weight: 800;
+  color: var(--hf-ink);
+}
+
+.head-actions {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.action-btn-primary {
+  border-radius: 9999px !important;
+  padding: 10px 22px !important;
+  font-weight: 700 !important;
+}
+
+.action-btn-sec {
+  border-radius: 9999px !important;
+  padding: 10px 18px !important;
+}
+
+/* Detail Layout */
+.detail-layout {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 320px;
+  gap: 24px;
+  align-items: start;
+}
+
+.canvas-col {
+  min-width: 0;
+}
+
+.view-tabs-card {
+  background: #ffffff;
   border: 1px solid var(--hf-border);
-  border-top: none;
-  border-radius: 0 0 var(--hf-radius-m) var(--hf-radius-m);
-  padding: 16px;
-  background: var(--hf-surface);
+  border-radius: var(--hf-radius-l);
+  box-shadow: var(--hf-shadow-sm);
   overflow: hidden;
 }
-.note { color: var(--hf-text-3); font-size: 12px; margin-top: 12px; }
-.code-btn { margin-top: 10px; }
-.code-note { color: var(--hf-text-3); font-size: 13px; margin: 0 0 8px; }
-.code-box { white-space: pre-wrap; font-size: 12px; line-height: 1.5; background: var(--hf-bg, #f6f5f2); padding: 12px; border-radius: 8px; max-height: 60vh; overflow: auto; }
 
-/* ── 侧栏 ── */
-.side { display: flex; flex-direction: column; gap: 14px; position: sticky; top: 84px; min-width: 0; }
-.room-card { border-radius: var(--hf-radius-m); }
-.room-title { display: inline-flex; align-items: center; gap: 7px; font-weight: 700; }
-.room-title .app-icon { color: var(--hf-primary); }
-.kv { display: flex; gap: 10px; font-size: 13px; padding: 5px 0; }
-.kv .k { color: var(--hf-text-3); width: 52px; flex: none; }
-.kv .v { color: var(--hf-text); min-width: 0; overflow-wrap: anywhere; }
-.warn-tag { margin-left: 6px; }
-.hint { color: var(--hf-text-3); font-size: 12px; margin-top: 10px; line-height: 1.7; }
-.empty-hint { margin-top: 0; }
+.view-tabs :deep(.el-tabs__header) {
+  margin: 0;
+  background: #ffffff;
+  padding: 8px 16px 0;
+  border-bottom: 1px solid var(--hf-border);
+}
 
-/* ── 主次动作 ── */
-.cta { display: flex; flex-direction: column; gap: 10px; }
-.cta-main { width: 100%; }
-.cta-row { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
-.cta-row .el-button { width: 100%; margin-left: 0; }
-.back-link { align-self: flex-start; color: var(--hf-text-3); }
-.back-link:hover { color: var(--hf-primary); background: var(--hf-primary-soft); }
+.view-tabs :deep(.el-tabs__nav-wrap::after) {
+  display: none;
+}
 
-/* ── 选房弹窗 ── */
-.pick-tbl :deep(.el-table__row) { cursor: pointer; }
-.pick-tip { color: var(--hf-text-3); font-size: 12px; margin: 10px 0 0; text-align: center; }
+.view-tabs :deep(.el-tabs__item) {
+  font-size: 14px;
+  font-weight: 600;
+  height: 44px;
+  line-height: 44px;
+  color: var(--hf-text-2);
+}
 
-@media (max-width: 960px) {
-  .detail { grid-template-columns: 1fr; }
-  .side { position: static; }
+.view-tabs :deep(.el-tabs__item.is-active) {
+  color: var(--hf-primary);
+  font-weight: 700;
+}
+
+.view-tabs :deep(.el-tabs__active-bar) {
+  background-color: var(--hf-primary);
+  height: 3px;
+  border-radius: 3px;
+}
+
+.view-tabs :deep(.el-tabs__content) {
+  padding: 20px;
+}
+
+/* 3D Viewer Wrap */
+.viewer-3d-wrap {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+}
+
+.threed-bar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 8px 12px;
+  background: var(--hf-canvas-subtle);
+  border-radius: var(--hf-radius-s);
+}
+
+.threed-tip {
+  font-size: 12px;
+  color: var(--hf-text-3);
+}
+
+.code-note {
+  font-size: 13px;
+  color: var(--hf-text-2);
+  margin-bottom: 10px;
+}
+
+.code-box {
+  background: var(--hf-canvas-subtle);
+  padding: 14px;
+  border-radius: var(--hf-radius-s);
+  border: 1px solid var(--hf-border);
+  font-size: 12px;
+  max-height: 60vh;
+  overflow: auto;
+}
+
+/* Empty View */
+.empty-view {
+  padding: 60px 20px;
+  text-align: center;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 10px;
+}
+
+.empty-icon-box {
+  font-size: 36px;
+  margin-bottom: 6px;
+}
+
+.empty-title {
+  font-size: 16px;
+  font-weight: 700;
+  color: var(--hf-ink);
+}
+
+.empty-sub {
+  font-size: 13px;
+  color: var(--hf-text-3);
+  margin-bottom: 12px;
+}
+
+/* Param Table */
+.param-table-wrap {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+}
+
+.param-desc {
+  border-radius: var(--hf-radius-m);
+  overflow: hidden;
+}
+
+.param-note {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 12px;
+  color: var(--hf-text-3);
+}
+
+/* Sidebar */
+.side-col {
+  display: flex;
+  flex-direction: column;
+  gap: 18px;
+  position: sticky;
+  top: 88px;
+}
+
+.room-inspect-card, .side-actions-card {
+  background: #ffffff;
+  border: 1px solid var(--hf-border);
+  border-radius: var(--hf-radius-l);
+  box-shadow: var(--hf-shadow-sm);
+  padding: 20px;
+}
+
+.inspect-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding-bottom: 14px;
+  border-bottom: 1px solid var(--hf-border);
+  margin-bottom: 14px;
+}
+
+.inspect-title {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 15px;
+  font-weight: 700;
+  color: var(--hf-ink);
+}
+
+.room-cat-badge {
+  font-size: 11px;
+  font-weight: 700;
+  color: var(--hf-primary);
+  background: var(--hf-primary-soft);
+  padding: 2px 8px;
+  border-radius: 4px;
+}
+
+.inspect-body {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.inspect-kv {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  font-size: 13px;
+}
+
+.inspect-kv .k {
+  color: var(--hf-text-3);
+  font-weight: 500;
+}
+
+.inspect-kv .v {
+  color: var(--hf-text);
+}
+
+.highlight-row {
+  background: var(--hf-primary-softer);
+  padding: 8px 10px;
+  border-radius: 6px;
+  border: 1px solid var(--hf-primary-soft);
+  margin-top: 4px;
+}
+
+.v-wrap {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.font-bold {
+  font-weight: 700;
+}
+
+.inspect-hint {
+  font-size: 11.5px;
+  color: var(--hf-text-3);
+  line-height: 1.6;
+  margin-top: 8px;
+  border-top: 1px dashed var(--hf-border);
+  padding-top: 8px;
+}
+
+.inspect-empty {
+  padding: 24px 10px;
+  text-align: center;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 6px;
+}
+
+.inspect-empty p {
+  font-size: 13.5px;
+  font-weight: 600;
+  color: var(--hf-ink);
+}
+
+.inspect-empty span {
+  font-size: 12px;
+  color: var(--hf-text-3);
+  line-height: 1.5;
+}
+
+.click-pulse {
+  width: 14px;
+  height: 14px;
+  border-radius: 50%;
+  background: var(--hf-primary);
+  box-shadow: 0 0 0 4px var(--hf-primary-soft);
+  margin-bottom: 8px;
+  animation: pulse 1.8s infinite;
+}
+
+@keyframes pulse {
+  0% { box-shadow: 0 0 0 0 rgba(21, 94, 117, 0.4); }
+  70% { box-shadow: 0 0 0 8px rgba(21, 94, 117, 0); }
+  100% { box-shadow: 0 0 0 0 rgba(21, 94, 117, 0); }
+}
+
+/* Side Actions */
+.card-sec-title {
+  font-size: 14px;
+  font-weight: 700;
+  color: var(--hf-ink);
+  margin-bottom: 12px;
+}
+
+.cta-evaluate-btn {
+  width: 100%;
+  margin-bottom: 10px;
+  border-radius: 9999px !important;
+  font-weight: 700 !important;
+}
+
+.btn-grid-two {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 8px;
+}
+
+.btn-grid-two .el-button {
+  width: 100%;
+  border-radius: 9999px !important;
+  margin-left: 0 !important;
+}
+
+/* Pick Modal */
+.pick-tip {
+  font-size: 12px;
+  color: var(--hf-text-3);
+  text-align: center;
+  margin-top: 12px;
+}
+
+/* Skel */
+.detail-skel {
+  min-height: 480px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 16px;
+  background: #ffffff;
+  border: 1px solid var(--hf-border);
+  border-radius: var(--hf-radius-l);
+  color: var(--hf-text-2);
+}
+
+.skel-spinner {
+  width: 32px;
+  height: 32px;
+  border: 3px solid var(--hf-border);
+  border-top-color: var(--hf-primary);
+  border-radius: 50%;
+  animation: spin 0.8s linear infinite;
+}
+
+@keyframes spin {
+  to { transform: rotate(360deg); }
+}
+
+@media (max-width: 980px) {
+  .detail-layout {
+    grid-template-columns: 1fr;
+  }
+  .side-col {
+    position: static;
+  }
 }
 </style>

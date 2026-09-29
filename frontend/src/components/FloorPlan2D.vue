@@ -129,26 +129,100 @@ watch(() => [props.geo, labelMode.value, zoom.value], () => nextTick(draw), { de
 </script>
 
 <template>
-  <div class="plan">
-    <div class="bar">
-      <el-radio-group v-model="labelMode" size="small">
-        <el-radio-button value="area">面积</el-radio-button>
-        <el-radio-button value="dim">尺寸(mm)</el-radio-button>
-        <el-radio-button value="none">无标注</el-radio-button>
-      </el-radio-group>
-      <el-button-group size="small">
-        <el-button @click="zoom = Math.max(0.6, zoom - 0.2)">－</el-button>
-        <el-button @click="zoom = Math.min(2.4, zoom + 0.2)">＋</el-button>
-      </el-button-group>
-      <span class="tip">点击房间可查看窗地比等参数（与评分明细联动）</span>
+  <div class="plan-container">
+    <div class="control-bar">
+      <div class="bar-left">
+        <span class="bar-label">标注模式</span>
+        <el-radio-group v-model="labelMode" size="small">
+          <el-radio-button value="area">房间面积</el-radio-button>
+          <el-radio-button value="dim">开间进深(mm)</el-radio-button>
+          <el-radio-button value="none">纯图纸</el-radio-button>
+        </el-radio-group>
+      </div>
+      
+      <div class="bar-right">
+        <span class="bar-label">缩放</span>
+        <el-button-group size="small">
+          <el-button @click="zoom = Math.max(0.6, +(zoom - 0.2).toFixed(1))">－</el-button>
+          <el-button disabled class="zoom-indicator hf-num">{{ Math.round(zoom * 100) }}%</el-button>
+          <el-button @click="zoom = Math.min(2.4, +(zoom + 0.2).toFixed(1))">＋</el-button>
+        </el-button-group>
+        <span class="tip">
+          <svg viewBox="0 0 16 16" width="12" height="12" fill="none" stroke="currentColor" stroke-width="1.8">
+            <circle cx="8" cy="8" r="7" />
+            <line x1="8" y1="7" x2="8" y2="12" />
+            <circle cx="8" cy="4" r="0.8" fill="currentColor" />
+          </svg>
+          点击房间联动右侧窗地比明细
+        </span>
+      </div>
     </div>
-    <canvas ref="canvas" :style="{ height: (height ?? 520) + 'px' }" @click="onClick" />
+    <div class="canvas-wrap">
+      <canvas ref="canvas" :style="{ height: (height ?? 540) + 'px' }" @click="onClick" />
+    </div>
   </div>
 </template>
 
 <style scoped>
-.plan { border: 1px solid var(--hf-border); border-radius: var(--hf-radius-m); background: var(--hf-surface); overflow: hidden; }
-.bar { display: flex; align-items: center; gap: 12px; padding: 9px 12px; border-bottom: 1px solid var(--hf-border); background: var(--hf-surface); flex-wrap: wrap; }
-.tip { color: var(--hf-text-3); font-size: 12px; }
-canvas { width: 100%; display: block; cursor: crosshair; background: #f7f6f2; }
+.plan-container {
+  border: 1px solid var(--hf-border);
+  border-radius: var(--hf-radius-m);
+  background: var(--hf-surface);
+  overflow: hidden;
+  box-shadow: var(--hf-shadow-xs);
+}
+
+.control-bar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  padding: 10px 16px;
+  border-bottom: 1px solid var(--hf-border);
+  background: #ffffff;
+  flex-wrap: wrap;
+}
+
+.bar-left, .bar-right {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex-wrap: wrap;
+}
+
+.bar-label {
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--hf-text-3);
+}
+
+.zoom-indicator {
+  font-size: 11px !important;
+  padding: 0 8px !important;
+  color: var(--hf-text-2) !important;
+  background: var(--hf-canvas-subtle) !important;
+}
+
+.tip {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  color: var(--hf-text-3);
+  font-size: 12px;
+}
+
+.canvas-wrap {
+  position: relative;
+  background-color: var(--hf-canvas);
+  background-image: 
+    linear-gradient(rgba(148, 163, 184, 0.12) 1px, transparent 1px),
+    linear-gradient(90deg, rgba(148, 163, 184, 0.12) 1px, transparent 1px);
+  background-size: 20px 20px;
+}
+
+canvas {
+  width: 100%;
+  display: block;
+  cursor: crosshair;
+}
 </style>

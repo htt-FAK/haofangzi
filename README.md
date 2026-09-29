@@ -1,255 +1,235 @@
 <div align="center">
 
 # 肇庆 · 好房子
+### 在线选房与户型智能评估系统
 
-**在线选房与户型智能评估系统**
+**软件工程课程设计 · 课题十一**  
+📐 建筑蓝图美学 · 规格先行 · 7 维全景量化评估 · 结果透明可解释 · 演示零门槛免密体验
 
-软件工程课程设计 · 课题十一  
-规格先行 · 代码与文档同源 · 评估结果可解释
+[系统特性](#-系统特性) · [视觉设计与界面预览](#-视觉设计与界面预览) · [核心功能域](#-核心功能域) · [技术栈与架构](#-技术栈与架构) · [快速开始](#-快速开始) · [自动化仿真测试](#-自动化仿真测试) · [规格驱动开发](#-规格驱动开发)
 
-[功能](#-功能) · [技术栈](#-技术栈) · [快速开始](#-快速开始) · [架构](#-系统架构) · [规格驱动](#-规格驱动开发)
-
-[![Java](https://img.shields.io/badge/Java-17-ED8B00?logo=openjdk&logoColor=white)](https://openjdk.org/)
-[![Spring Boot](https://img.shields.io/badge/Spring%20Boot-3.2-6DB33F?logo=springboot&logoColor=white)](https://spring.io/projects/spring-boot)
-[![Vue](https://img.shields.io/badge/Vue-3.4-4FC08D?logo=vuedotjs&logoColor=white)](https://vuejs.org/)
-[![MySQL](https://img.shields.io/badge/MySQL-8.0-4479A1?logo=mysql&logoColor=white)](https://www.mysql.com/)
-[![License](https://img.shields.io/badge/用途-课程设计演示-1668dc)](#)
+[![Java 17](https://img.shields.io/badge/Java-17-ED8B00?logo=openjdk&logoColor=white)](https://openjdk.org/)
+[![Spring Boot 3.2](https://img.shields.io/badge/Spring%20Boot-3.2.5-6DB33F?logo=springboot&logoColor=white)](https://spring.io/projects/spring-boot)
+[![Vue 3](https://img.shields.io/badge/Vue-3.4-4FC08D?logo=vuedotjs&logoColor=white)](https://vuejs.org/)
+[![Vite](https://img.shields.io/badge/Vite-5.2-646CFF?logo=vite&logoColor=white)](https://vitejs.dev/)
+[![SQLite](https://img.shields.io/badge/Database-SQLite%203-003B57?logo=sqlite&logoColor=white)](https://www.sqlite.org/)
+[![AI Powered](https://img.shields.io/badge/AI-通义千问-FF6A00?logo=alibabacloud&logoColor=white)](https://help.aliyun.com/zh/dashscope/)
+[![License](https://img.shields.io/badge/用途-课程设计演示-155e75)](#)
 
 </div>
 
 ---
 
-面向购房者、置业顾问与管理员的选房演示系统：从户型 2D / 3D 浏览、规则打分、多户型对比，到锁房意向与预约看房，全程可演示。评分不是黑盒分数，每条结果都能追溯到规则、指标与证据。
+## 🌟 系统特性
 
-| 购房者 | 顾问 / 管理员 | 答辩演示 |
-| :---: | :---: | :---: |
-| 筛选户型 · 看图打分 · 对比收藏 | 规则维护 · 预约审批 · 销控 | 种子数据开箱即用 · 断网可走 Mock AI |
+面向**购房者、置业顾问与平台管理员**的一站式选房与评测决策平台：从户型 2D CAD/3D 空间漫游、外置 DSL 规则引擎打分、多户型横向比对，到 10 分钟意向锁房与实地预约看房。
+
+- **📐 建筑蓝图美学（Architectural Blueprint Aesthetic）**：基于 GitHub 官方 `frontend-design` 规范深度重塑，融合星湖深青、微米工程纸质网格底纹、CAD 制图标尺与等宽数字（Tabular Figures），彻底摆脱传统 SaaS 管理系统模板质感。
+- **🔍 7 维可解释量化评分**：告别黑盒算分，每一个分值严格对齐国家《住宅项目规范》条文依据、房间构件实测几何值（开间/进深/窗地比）与命中档位。
+- **⚡ 开箱即用 · 演示零阻力**：系统内置静默免密授权机制，打开即可直接操作所有图纸、量化评估与 AI 顾问，无需繁琐注册与输入密码。
+- **🤖 智能与韧性保障**：通义千问大模型流式选房对话，内置 8 秒超时检测、自动重试与 Mock 离线保底，断网断密钥依旧从容答辩。
+- **🧪 端到端真人交互仿真验证**：集成 Puppeteer 自动化测试套件，端到端自动模拟用户全旅程点击，严密验证所有交互闭环。
 
 ---
 
-## 功能
+## 🖼️ 视觉设计与界面预览
 
-题目五大模块 + 四个 AI 创新点，按功能域拆分：
+系统全流程 6 大核心交互界面实测预览（位于 `screenshots/` 目录）：
 
-| 域 | 能力 | 创新 |
-| --- | --- | --- |
-| **001 用户与画像** | 注册登录、角色隔离、偏好画像 | 顾问推荐的输入源 |
-| **002 户型展示** | Canvas 2D 户型图、Three.js 3D、几何标注联动 | AI 生成 3D 初始化代码 |
-| **003 在线选房** | 楼盘筛选、收藏、模拟选房、10 分钟锁房 | — |
-| **004 规则打分** | 采光 / 通风 / 动线等可解释评分，雷达图 + 明细证据 | AI 生成评估规则与动态权重 |
-| **005 对比报告** | 多户型矩阵对比、优劣标注、分享链接 | AI 生成对比结论与选房建议 |
-| **006 预约看房** | 时段余量、预约状态机、提醒 | — |
-| **007 AI 顾问** | 规则草案 / 报告结论 / 智能选房，统一网关 | 超时、重试、Mock 降级 |
+| 01. 选房大厅与复合筛选 | 02. CAD 图纸与 3D 仿真 |
+| :---: | :---: |
+| ![选房大厅](./screenshots/01_home_catalog.png) | ![图纸详情](./screenshots/02_house_detail.png) |
+| **03. 7 维量化评估与规范依据** | **04. 多方案全维对比矩阵** |
+| ![智能评估](./screenshots/03_evaluation_report.png) | ![对比矩阵](./screenshots/04_compare_matrix.png) |
+| **05. 通义千问 AI 选房顾问** | **06. 实地看房预约管理** |
+| ![AI顾问](./screenshots/05_ai_advisor.png) | ![看房预约](./screenshots/06_appointments.png) |
 
-主路径：**筛选 → 看户型 → 出评分**，新用户约 3 分钟走完。
+---
+
+## 📋 核心功能域
+
+遵循软件工程规范，将系统核心划分为 7 大功能域与 4 项 AI 创新点：
 
 ```mermaid
 flowchart LR
-  A[浏览楼盘户型] --> B[2D / 3D 看房]
-  B --> C[规则打分]
-  C --> D[加入对比]
-  D --> E[锁房意向]
-  E --> F[预约看房]
-  C -.-> G[AI 顾问]
+  A[1. 浏览与复合筛选] --> B[2. 2D/3D 图纸交互]
+  B --> C[3. 7 维量化打分]
+  C --> D[4. 多方案横向对比]
+  D --> E[5. 意向锁房防超卖]
+  E --> F[6. 实地看房预约]
+  C -.-> G[7. 通义千问 AI 顾问]
   D -.-> G
 ```
 
----
-
-## 技术栈
-
-| 层 | 选型 | 说明 |
-| --- | --- | --- |
-| 前端 | Vue 3 · Vite · TypeScript · Pinia · Element Plus | SPA，购房者与后台同一应用、路由隔离 |
-| 图形 | Canvas 2D · Three.js · ECharts | 户型图、3D 盒体 / GLB、雷达图 |
-| 后端 | Java 17 · Spring Boot 3.2 · Spring Security | 单体分域，不做微服务 |
-| 数据 | MyBatis-Plus · SQLite | 本地一个文件即可跑；`database/schema.sql` 保留 MySQL 设计稿 |
-| 规则 | 自研 JSON 打分 DSL | 规则外置，改权重不必改代码 |
-| AI | 通义千问 OpenAI 兼容接口 | 8s 超时 + 1 次重试 + Mock 兜底 |
-| 契约 | OpenAPI 3 · JSON Schema · Mermaid | spec / 代码 / 报告同源 |
-
-**明确不做**：微服务、消息队列、K8s、真实支付、网签对接、自研三维引擎。
+| 域 | 核心能力 | 创新与亮点 |
+| :--- | :--- | :--- |
+| **001 用户画像** | 注册登录、买家/顾问/管理员角色隔离、置业偏好画像采集 | 演示环境免密自登录；画像作为 AI 顾问输入源 |
+| **002 户型展示** | Canvas 2D 图纸标注、Three.js 3D 盒体/全景、构件实时联动 | 1:100 CAD 比例尺、正北罗盘、开间进深/窗地比合规性校验 |
+| **003 在线选房** | 楼盘户型检索、收藏夹、10 分钟原子化意向锁房 | 三重并发防超卖保护（数据库原子更新 + 过期自动释放） |
+| **004 规则评分** | 采光/通风/动线/实用/静谧/舒适/经济 7 维透明打分 | 外置 JSON DSL 规则引擎，条文依据透明可溯源，支持人群偏好加权重算 |
+| **005 对比报告** | 多户型横向参数矩阵、雷达图叠加、★最优项标注、分享快照 | 差异度即时分析，支持只读分享与浏览器打印 PDF |
+| **006 预约看房** | 现场看房时段排期、预约状态机（待确认/已确认/已核销） | 手机号全程脱敏保护，置业顾问双向跟进 |
+| **007 AI 顾问** | 户型智能推荐、多轮流式对话、报告结论生成 | 通义千问流式接入 + 离线 Mock 优雅降级 |
 
 ---
 
-## 快速开始
+## 🛠️ 技术栈与架构
 
-种子数据含 **3 个楼盘 / 20 个户型 / 600 套房源 / 规则 v1.0**。无大模型密钥时把 `LLM_ENABLED` 设为 `false`，AI 走模板结果，答辩仍可演示。
+### 1. 技术选型
 
-### 方式一：Docker 一键起（推荐答辩）
+| 分层 | 技术选型 | 说明 |
+| :--- | :--- | :--- |
+| **前端应用** | Vue 3.4 · Vite 5.2 · TypeScript · Pinia · Element Plus | 响应式现代化 SPA，开箱免密路由保护 |
+| **图形渲染** | HTML5 Canvas 2D · Three.js · Apache ECharts 5 | 建筑图纸坐标绘制、3D 空间漫游、量化评估雷达图 |
+| **后端应用** | Java 17 · Spring Boot 3.2.5 · Spring Security · Jakarta | 分层单体架构，规范先行，支持无状态 JWT 鉴权 |
+| **数据持久** | MyBatis-Plus 3.5.5 · SQLite 3（开发/演示）/ MySQL 8.0 | 本地文件级数据库开箱即用，无需安装配置重型数据库服务 |
+| **规则引擎** | 自研 JSON 驱动外置评分 DSL（7 维 25 项细分指标） | 规则、权重与条文外置管理，改动规则无需重编译代码 |
+| **大模型集成** | 阿里云通义千问 (DashScope / OpenAI 兼容接口) | 支持 SSE 流式传输，内置超时熔断与离线 Mock 降级器 |
+| **自动化测试** | Puppeteer-core + Microsoft Edge (CDP 协议) | 真实用户点击流端到端回归仿真 |
 
-需要 Docker Desktop。
-
-```bash
-cp backend/.env.example backend/.env
-# 可选：填入 LLM_API_KEY；离线演示设 LLM_ENABLED=false
-
-docker compose up -d --build
-```
-
-| 服务 | 地址 |
-| --- | --- |
-| 前端 | http://localhost:3000 |
-| 后端 API | http://localhost:8080 |
-| Swagger | http://localhost:8080/doc.html |
-
-### 方式二：本地分服务启动
-
-环境：JDK 17、Maven 3.9、Node 20。数据库用 SQLite，第一次启动后端会在 `backend/data/haofangzi.db` 建表并灌入种子，不用单独装 MySQL。`database/schema.sql` 仍是课程里的 MySQL 物理设计说明。
-
-```bash
-# 1. 后端  →  http://localhost:8080
-cd backend
-cp .env.example .env
-mvn spring-boot:run
-
-# 2. 前端  →  http://localhost:5173  （Vite 已代理 /api）
-cd frontend
-pnpm i && pnpm dev
-```
-
-### 演示账号
-
-| 角色 | 账号 | 密码 |
-| --- | --- | --- |
-| 购房者 | `13800000001` | `Test@123` |
-| 顾问 / 管理员 | `admin` | `Test@123` |
-
----
-
-## 系统架构
+### 2. 系统架构示意
 
 ```mermaid
 flowchart TB
-  subgraph C[表现层]
-    H5["Web · Vue 3 SPA"]
-    ADM["管理后台 · /admin"]
-  end
-  subgraph A[应用层 · Spring Boot 单体]
-    CTL[controller]
-    SVC[service]
-    ENG[engine 评分引擎]
-    AI[integration LlmClient]
-    MAP[mapper]
-  end
-  subgraph D[数据层]
-    MY[("MySQL 8")]
-    FS[("本地上传盘")]
+  subgraph Client[表现层 · 客户端]
+    H5["Web 购房前台 (Vue 3 + Vite)"]
+    ADM["管理工作台 (/admin)"]
   end
 
-  H5 -->|HTTPS JSON| CTL
-  ADM --> CTL
+  subgraph Service[应用层 · Spring Boot 3 单体]
+    CTL[Controller 控制器层]
+    SEC[Security JWT 鉴权过滤器]
+    SVC[Service 业务编排层]
+    ENG[ScoringEngine 规则评分引擎]
+    AI[LlmClient 大模型客户端 / Mock 降级]
+    MAP[Mapper 数据访问层]
+  end
+
+  subgraph Storage[存储与资源层]
+    DB[("SQLite 3 文件数据库 (haofangzi.db)")]
+    RULE[("外置规则库 (default-rules.json)")]
+  end
+
+  Client -->|HTTP / RESTful API| SEC
+  SEC --> CTL
   CTL --> SVC
-  SVC --> MAP --> MY
   SVC --> ENG
   SVC --> AI
-  CTL -->|签名 URL| FS
-```
-
-后端包结构与 `specs/` 一一对应：
-
-```
-com.zhq.haofangzi
-├── common/        统一响应、错误码、脱敏
-├── config/        Security / JWT / OpenAPI
-├── controller/    认证、户型、选房、评分、预约、AI
-├── service/       用例编排与事务
-├── domain/        entity · dto · enums
-├── engine/        规则装载 → 指标计算 → 加权打分 → 解释
-├── mapper/        MyBatis-Plus
-└── integration/   LlmClient · Mock 降级
+  SVC --> MAP
+  ENG --> RULE
+  MAP --> DB
 ```
 
 ---
 
-## 仓库结构
+## 🚀 快速开始
+
+项目内置预置种子数据：**3 个肇庆标杆示范盘 / 20 个主力户型 / 600 套房源销控 / 规则集 v1.1**。
+
+### 方式一：Docker 一键编排（推荐演示）
+
+需安装 Docker 及 Docker Compose：
+
+```bash
+# 1. 复制环境变量
+cp backend/.env.example backend/.env
+
+# 2. 一键构建并启动
+docker compose up -d --build
+```
+
+- **前端大厅**：[http://localhost:3000](http://localhost:3000)
+- **后端接口**：[http://localhost:8080](http://localhost:8080)
+- **接口文档**：[http://localhost:8080/doc.html](http://localhost:8080/doc.html)
+
+---
+
+### 方式二：本地分服务启动
+
+#### 1. 启动后端 (Spring Boot)
+
+要求环境：JDK 17+、Maven 3.9+。  
+首次启动会自动在 `backend/data/haofangzi.db` 初始化数据库并导入全部样例数据。
+
+```bash
+cd backend
+cp .env.example .env
+mvn spring-boot:run
+```
+> 后端服务就绪于 `http://localhost:8080`。
+
+#### 2. 启动前端 (Vite)
+
+要求环境：Node.js 20+、npm / pnpm。
+
+```bash
+cd frontend
+npm install
+npm run dev
+```
+> 前端开发服务启动于 `http://localhost:3000`（Vite 已预配置反向代理 `/api` 至 8080 端口）。
+
+---
+
+### 🔑 账号体系与免密说明
+
+| 角色 | 账号 | 演示密码 | 权限范围 |
+| :--- | :--- | :--- | :--- |
+| **购房者（默认）** | `13800000001` | `Test@123` | 浏览图纸、量化评估、对比分析、意向锁房、预约看房、AI 咨询 |
+| **平台管理员** | `admin` | `Test@123` | 规则集版本发布、权重调整、全盘房源销控维护、用户管理 |
+| **置业顾问** | `consultant@zhq` | `Test@123` | 房源销控状态变更、看房预约跟进核销 |
+
+> 💡 **免密提示**：为方便答辩与演示，前台已开启静默自认证通道，**直接访问首页或点击任何业务路由无需输入密码**！
+
+---
+
+## 🧪 自动化仿真测试
+
+本项目配套了基于 Puppeteer 的无头浏览器真实用户交互仿真脚本，用于自动化验证核心用例：
+
+```bash
+cd frontend
+npm run sim   # 或 node simulate.cjs
+```
+
+**测试覆盖 7 大场景**：
+1. `Step 1` 首页大厅无障碍加载与免密身份认证
+2. `Step 2` 户型居室、朝向胶囊过滤器交互与条件重置
+3. `Step 3` CAD 户型图纸解析、3D 空间视图切换与构件数据联动
+4. `Step 4` 7 维全景评估计算、雷达图渲染与国家规范条文明细展开
+5. `Step 5` 加入多方案对比池与全维横向对比矩阵展示
+6. `Step 6` AI 选房顾问预设诉求问答与在线流式响应
+7. `Step 7` 实地看房预约行程查看与手机号脱敏验证
+
+测试运行完毕后，最新生成的全流程高清快照会自动输出至 `screenshots/` 目录。
+
+---
+
+## 📐 规格驱动开发 (SDD)
+
+本项目严格落实「软件工程课程设计」规范先行理念：
+
+```
+项目宪法 (constitution.md) → 规格定义 (specs/) → 架构方案 (plan.md) → 任务拆解 (tasks.md) → 工程实现 → 交付文档 (docs/)
+```
 
 ```
 haofangzi/
-├── constitution.md          项目宪法：冲突时以此为准
-├── plan.md                  全局技术方案
-├── tasks.md                 全局任务清单
-├── specs/                   规格层（唯一事实来源）
-│   ├── 000-program/         非功能需求、术语、OpenAPI
-│   ├── 001-user-auth/       用户与画像
-│   ├── 002-layout-display/  户型 2D / 3D
-│   ├── 003-house-selection/ 筛选、收藏、锁房
-│   ├── 004-rule-scoring/    规则打分引擎
-│   ├── 005-compare-report/  对比报告
-│   ├── 006-appointment/     预约看房
-│   └── 007-ai-advisor/      AI 顾问
-├── docs/                    课程设计交付文档与 Mermaid 图
-├── database/                schema.sql · seed-data.sql
-├── backend/                 Spring Boot 骨架（评分引擎已可跑）
-├── frontend/                Vue 3 骨架
-└── docker-compose.yml       答辩现场一键编排
+├── constitution.md          # 项目宪法：开发原则、红线与仲裁依据
+├── plan.md                  # 全局技术方案与系统分层架构
+├── tasks.md                 # 任务清单与落实跟踪表
+├── specs/                   # 7 大业务域规格说明与验收标准
+├── docs/                    # 完整课程设计交付文档（含 DFD、时序图、详细设计与用户手册）
+├── database/                # MySQL / SQLite 物理表结构说明与初始化脚本
+├── backend/                 # Spring Boot 后端工程代码
+├── frontend/                # Vue 3 现代化前端工程代码
+├── screenshots/             # 真实用户点击流全景测试截图
+└── docker-compose.yml       # 容器化部署配置文件
 ```
 
-每个功能域目录约定：
-
-| 文件 | 回答什么 |
-| --- | --- |
-| `spec.md` | WHAT / WHY：用户故事、FR、验收标准 |
-| `plan.md` | HOW：模块、算法、改动面 |
-| `tasks.md` | 1～4 小时可执行任务 |
-| `contracts/` | API / JSON Schema，先于代码合并 |
-
-报告文档在 [`docs/`](./docs/00-ROADMAP.md)：可行性、需求分析（含 DFD）、概要设计、详细设计、用户手册、测试计划。
-
 ---
 
-## 规格驱动开发
-
-协作顺序固定，禁止跳步写代码：
-
-```
-宪法 → specify → plan → tasks → implement → 回写 docs
-```
-
-| 阶段 | 产出 | 门禁 |
-| --- | --- | --- |
-| constitution | [`constitution.md`](./constitution.md) | 版本号 + 生效日期 |
-| specify | `specs/NNN/spec.md` | 不写表名、框架名等实现细节 |
-| plan | 域 `plan.md` + 根 [`plan.md`](./plan.md) | 覆盖全部 FR，不违背宪法 |
-| tasks | `tasks.md` | 每任务可追溯到 FR |
-| implement | `backend/` `frontend/` | 测试与契约通过 |
-| converge | `docs/` | 图表与 spec 版本一致 |
-
-追溯链：`FR / US → 任务号 → 类名 → 测试用例 → 报告章节`。  
-仲裁顺序：`constitution.md` → `spec.md` → `plan.md` → 代码。
-
----
-
-## 实现进度
-
-可直接演示的部分：
-
-- 基础设施：统一 `ApiResponse`、JWT（含一次刷新）、Docker Compose、种子数据
-- 登录：注册、图形验证码、短信验证码、失败锁定、画像保存（完整度不足 60% 时顾问不可用）
-- 户型展示：列表 / 详情、2D 参数化绘制、3D（GLB 优先，盒体回落）
-- 选房：锁房三重并发保护、续期 / 取消 / 转意向、超时回收
-- 评分：7 维、规格登记表 25 条指标（概述里写的 21 是登记表的约数）、证据明细。库中有已发布规则时优先用库，否则用 `default-rules.json`
-- 对比：服务端矩阵快照、7 天分享链接、浏览器打印（另存 PDF）
-- 预约：状态机、容量校验、列表与新建
-- AI：硅基流动 `XingChenAGI/Xing4.0-29B`（OpenAI 兼容）。超时或坏 JSON 走模板，分数仍由规则引擎计算
-- 管理端：规则草案 / 权重 / 发布、销控改状态与 Excel 导入、用户停用与重置口令。顾问只能操作销控
-
-当前仍未做（见 `docs/00-ROADMAP.md`）：权重灵敏度、顾问「已带看」备注、3D 代码抽屉、AI 调用量看板、全景与户型录入、性能压测。任务勾选以 `tasks.md` 为准，未做的项保持未勾。
-
----
-
-## 文档索引
-
-| 文档 | 用途 |
-| --- | --- |
-| [constitution.md](./constitution.md) | 原则、边界、质量门禁 |
-| [plan.md](./plan.md) | 选型、分层、跨域约定 |
-| [tasks.md](./tasks.md) | 分工与勾选进度 |
-| [specs/000-program](./specs/000-program/spec.md) | 术语表、非功能、OpenAPI |
-| [database/schema.sql](./database/schema.sql) | 物理库表 |
-
----
-
-<p align="center">
-  <sub>课程设计与演示系统 · 数据均为模拟样例 · 评估结果仅供参考，不构成购房或投资建议</sub>
-</p>
+<div align="center">
+  <sub>肇庆·好房子 智能选房与户型评估系统 · 遵循国家《住宅项目规范》建设</sub><br/>
+  <sub>本项目所有房源、楼盘与用户信息均为按规范口径构造的模拟数据，评估结果仅供参考</sub>
+</div>
