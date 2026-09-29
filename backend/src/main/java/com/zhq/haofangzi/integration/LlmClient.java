@@ -66,7 +66,26 @@ public interface LlmClient {
         public OpenAiCompatible(HfProperties props, ObjectMapper mapper) {
             this.props = props;
             this.mapper = mapper;
-            this.http = HttpClient.newBuilder().connectTimeout(Duration.ofMillis(props.getAi().getTimeoutMs())).build();
+            HttpClient.Builder b = HttpClient.newBuilder()
+                    .connectTimeout(Duration.ofMillis(props.getAi().getTimeoutMs()))
+                    .proxy(java.net.ProxySelector.getDefault());
+            String envProxy = System.getenv("https_proxy");
+            if (envProxy == null || envProxy.isBlank()) {
+                envProxy = System.getenv("all_proxy");
+            }
+            if (envProxy == null || envProxy.isBlank()) {
+                envProxy = System.getenv("http_proxy");
+            }
+            if (envProxy != null && !envProxy.isBlank()) {
+                try {
+                    URI u = URI.create(envProxy.startsWith("http") ? envProxy : ("http://" + envProxy));
+                    if (u.getHost() != null && u.getPort() > 0) {
+                        b.proxy(java.net.ProxySelector.of(new java.net.InetSocketAddress(u.getHost(), u.getPort())));
+                    }
+                } catch (Exception ignored) {
+                }
+            }
+            this.http = b.build();
         }
 
         @Override

@@ -14,7 +14,7 @@ services:
       JWT_SECRET: demo-only-please-change-me-32bytes!!
       LLM_ENABLED: "true"
       LLM_BASE_URL: https://api.siliconflow.cn/v1
-      LLM_MODEL: XingChenAGI/Xing4.0-29B
+      LLM_MODEL: Qwen/Qwen2.5-7B-Instruct
       LLM_TIMEOUT_MS: "20000"
       LLM_API_KEY: ${LLM_API_KEY:-}
     env_file:
