@@ -60,9 +60,19 @@ public class HfProperties {
         private String baseUrl;
         private String model;
         private String apiKey;
-        private long timeoutMs = 8000;
+        private long timeoutMs = 60000;
         private int maxRetry = 1;
         private long cacheSeconds = 60;
+        /** Qwen3.5-4B 默认启用思考模式 (Thinking Mode) */
+        private boolean enableThinking = true;
+        /** 原生 256K 上下文 (262,144 tokens) */
+        private int contextLength = 262144;
+        private int maxTokens = 4096;
+        private double temperature = 0.7;
+        private double topP = 0.8;
+        private double repetitionPenalty = 1.05;
+        /** 原生多模态统一视觉语言基础能力 */
+        private boolean multimodal = true;
     }
 
     @Data

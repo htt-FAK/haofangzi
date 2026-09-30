@@ -45,11 +45,18 @@ haofangzi:
   ai:
     enabled: ${LLM_ENABLED:true}      # false → 只走 MockLlmClient（AC-66 断网可演示）
     base-url: ${LLM_BASE_URL:https://api.siliconflow.cn/v1}
-    model: ${LLM_MODEL:XingChenAGI/Xing4.0-29B}
+    model: ${LLM_MODEL:Qwen/Qwen3.5-4B}
     api-key: ${LLM_API_KEY:}          # 仅环境变量，不入库
-    timeout-ms: ${LLM_TIMEOUT_MS:20000}
+    timeout-ms: ${LLM_TIMEOUT_MS:60000}
     max-retry: 1
     cache-seconds: 60                 # FR-113
+    enable-thinking: ${LLM_ENABLE_THINKING:true}
+    context-length: 262144
+    max-tokens: 4096
+    temperature: 0.7
+    top-p: 0.8
+    repetition-penalty: 1.05
+    multimodal: true
   media:
     root: ./upload                     # 本地目录；可换 MinIO（FR-21）
     sign-ttl-seconds: 600

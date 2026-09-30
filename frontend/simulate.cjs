@@ -145,18 +145,21 @@ async function runSimulation() {
     await page.screenshot({ path: path.join(SCREENSHOT_DIR, '04_compare_matrix.png') })
     console.log('   📸 截图已保存: 04_compare_matrix.png')
 
-    // 6. 前往 AI 选房顾问页
-    console.log('\n📍 [Step 6] 访问 AI 选房顾问 /ai/advisor 发起对话...')
+    // 6. 前往 AI 选房顾问页 (Kimi 风格)
+    console.log('\n📍 [Step 6] 访问 AI 选房顾问 /ai/advisor (Kimi 风格)...')
     await page.goto('http://localhost:3000/ai/advisor', { waitUntil: 'networkidle2', timeout: 15000 })
-    await sleep(1800)
+    await sleep(2000)
 
-    const examplePill = await page.$('.example-pill')
-    if (examplePill) {
-      const qText = await page.evaluate((el) => el.textContent.trim(), examplePill)
-      console.log(`   👉 点击预设咨询: "${qText}"`)
-      await examplePill.click()
-      console.log('   ⏳ 等待 AI 顾问流式回答 (约 4 秒)...')
-      await sleep(4500)
+    await page.screenshot({ path: path.join(SCREENSHOT_DIR, '05_ai_advisor_welcome.png') })
+    console.log('   📸 截图已保存: 05_ai_advisor_welcome.png')
+
+    const suggestCard = await page.$('.suggest-card') || await page.$('.example-pill')
+    if (suggestCard) {
+      const qText = await page.evaluate((el) => el.textContent.trim(), suggestCard)
+      console.log(`   👉 点击 Kimi 风格预设卡片: "${qText}"`)
+      await suggestCard.click()
+      console.log('   ⏳ 等待 Qwen3.5-4B 思考与流式回答 (约 6 秒)...')
+      await sleep(6500)
     }
 
     await page.screenshot({ path: path.join(SCREENSHOT_DIR, '05_ai_advisor.png') })

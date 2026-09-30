@@ -61,18 +61,30 @@ public class AiController {
         response.setHeader("Cache-Control", "no-cache");
         response.setHeader("X-Accel-Buffering", "no");
         var out = response.getWriter();
-        String source = ai.chat(userId, question, text -> {
-            try {
-                out.write("data: " + json.writeValueAsString(Map.of("type", "token", "text", text)) + "\n\n");
-                out.flush();
-                response.flushBuffer();
-            } catch (IOException e) {
-                throw new IllegalStateException(e);
-            }
-        });
-        out.write("data: " + json.writeValueAsString(Map.of("type", "done", "source", source)) + "\n\n");
-        out.flush();
-        response.flushBuffer();
+        try {
+            String source = ai.chat(userId, question, text -> {
+                try {
+                    out.write("data: " + json.writeValueAsString(Map.of("type", "token", "text", text)) + "\n\n");
+                    out.flush();
+                    response.flushBuffer();
+                } catch (Exception e) {
+                    throw new RuntimeException("Client disconnected", e);
+                }
+            }, thinking -> {
+                try {
+                    out.write("data: " + json.writeValueAsString(Map.of("type", "thinking", "text", thinking)) + "\n\n");
+                    out.flush();
+                    response.flushBuffer();
+                } catch (Exception e) {
+                    throw new RuntimeException("Client disconnected", e);
+                }
+            });
+            out.write("data: " + json.writeValueAsString(Map.of("type", "done", "source", source)) + "\n\n");
+            out.flush();
+            response.flushBuffer();
+        } catch (Exception clientDisconnect) {
+            // 客户端主动断开或网络中断，正常结束流
+        }
     }
 
     private static long uid(Principal me) {

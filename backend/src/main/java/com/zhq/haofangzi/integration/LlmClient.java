@@ -106,7 +106,10 @@ public interface LlmClient {
                 try {
                     Map<String, Object> payload = new java.util.LinkedHashMap<>();
                     payload.put("model", ai.getModel());
-                    payload.put("temperature", 0.2);
+                    payload.put("temperature", 0.1);
+                    payload.put("top_p", 0.8);
+                    payload.put("max_tokens", 2048);
+                    // 结构化 JSON 输出关闭思考模式，确保秒级直接输出规范 JSON
                     payload.put("enable_thinking", false);
                     if (jsonMode) {
                         payload.put("response_format", Map.of("type", "json_object"));
@@ -145,6 +148,13 @@ public interface LlmClient {
          * @return 是否至少收到一个正文字符；失败或无密钥返回 false
          */
         public boolean streamText(List<Map<String, String>> messages, Consumer<String> onToken) {
+            return streamText(messages, onToken, null);
+        }
+
+        /**
+         * 流式对话。原生支持 Qwen3.5-4B 思考模式（Thinking Mode），流式透传 reasoning_content 与 content。
+         */
+        public boolean streamText(List<Map<String, String>> messages, Consumer<String> onToken, Consumer<String> onThinking) {
             HfProperties.Ai ai = props.getAi();
             if (!ai.isEnabled() || ai.getApiKey() == null || ai.getApiKey().isBlank()) {
                 return false;
@@ -156,13 +166,15 @@ public interface LlmClient {
             try {
                 Map<String, Object> payload = new java.util.LinkedHashMap<>();
                 payload.put("model", ai.getModel());
-                payload.put("temperature", 0.4);
-                payload.put("enable_thinking", false);
+                payload.put("temperature", ai.getTemperature());
+                payload.put("top_p", ai.getTopP());
+                payload.put("max_tokens", ai.getMaxTokens());
+                payload.put("enable_thinking", ai.isEnableThinking());
                 payload.put("stream", true);
                 payload.put("messages", messages);
                 String body = mapper.writeValueAsString(payload);
                 HttpRequest req = HttpRequest.newBuilder(URI.create(ai.getBaseUrl() + "/chat/completions"))
-                        .timeout(Duration.ofMillis(90_000))
+                        .timeout(Duration.ofMillis(120_000))
                         .header("Content-Type", "application/json")
                         .header("Authorization", "Bearer " + ai.getApiKey())
                         .POST(HttpRequest.BodyPublishers.ofString(body, StandardCharsets.UTF_8)).build();
@@ -173,12 +185,12 @@ public interface LlmClient {
                     return false;
                 }
                 InputStream in = raw;
-                kill = streamTimeouts.schedule(() -> closeQuietly(in), 90, TimeUnit.SECONDS);
+                kill = streamTimeouts.schedule(() -> closeQuietly(in), 120, TimeUnit.SECONDS);
                 quiet = streamTimeouts.schedule(() -> {
                     if (!any[0]) {
                         closeQuietly(in);
                     }
-                }, 20, TimeUnit.SECONDS);
+                }, 30, TimeUnit.SECONDS);
                 try (BufferedReader reader = new BufferedReader(new InputStreamReader(in, StandardCharsets.UTF_8))) {
                     String line;
                     while ((line = reader.readLine()) != null) {
@@ -189,10 +201,29 @@ public interface LlmClient {
                         if (data.isEmpty() || "[DONE]".equals(data)) {
                             continue;
                         }
+                        String reasoning = deltaReasoning(data);
+                        if (!reasoning.isEmpty()) {
+                            any[0] = true;
+                            if (onThinking != null) {
+                                try {
+                                    onThinking.accept(reasoning);
+                                } catch (Exception clientGone) {
+                                    log.debug("下游客户端已断开连接");
+                                    break;
+                                }
+                            }
+                        }
                         String piece = deltaContent(data);
                         if (!piece.isEmpty()) {
                             any[0] = true;
-                            onToken.accept(piece);
+                            if (onToken != null) {
+                                try {
+                                    onToken.accept(piece);
+                                } catch (Exception clientGone) {
+                                    log.debug("下游客户端已断开连接");
+                                    break;
+                                }
+                            }
                         }
                     }
                 }
@@ -232,6 +263,18 @@ public interface LlmClient {
                     return "";
                 }
                 return content.asText("");
+            } catch (Exception e) {
+                return "";
+            }
+        }
+
+        private String deltaReasoning(String data) {
+            try {
+                JsonNode reasoning = mapper.readTree(data).path("choices").path(0).path("delta").path("reasoning_content");
+                if (reasoning.isMissingNode() || reasoning.isNull() || !reasoning.isTextual()) {
+                    return "";
+                }
+                return reasoning.asText("");
             } catch (Exception e) {
                 return "";
             }
@@ -349,7 +392,11 @@ public interface LlmClient {
         }
 
         public boolean streamText(List<Map<String, String>> messages, Consumer<String> onToken) {
-            return ((OpenAiCompatible) primary).streamText(messages, onToken);
+            return ((OpenAiCompatible) primary).streamText(messages, onToken, null);
+        }
+
+        public boolean streamText(List<Map<String, String>> messages, Consumer<String> onToken, Consumer<String> onThinking) {
+            return ((OpenAiCompatible) primary).streamText(messages, onToken, onThinking);
         }
 
         public Outcome generateBrief(String promptKey, String systemPrompt, String userPrompt, long timeoutMs) {

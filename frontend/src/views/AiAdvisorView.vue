@@ -3,17 +3,14 @@ import { computed, nextTick, onMounted, reactive, ref } from 'vue'
 import { ElMessage } from 'element-plus'
 import MarkdownIt from 'markdown-it'
 import { del, get, put } from '../api/http'
-import AppIcon from '../components/AppIcon.vue'
 
 /**
- * 肇庆好房子 · 智能选房顾问（参考 GitHub 顶级 AI 对话应用重构）
- * 特性：
- *  - 现代化双栏布局（左侧会话历史/画像看板 + 右侧沉浸式对话大厅）
- *  - 完整真实 Markdown 渲染（标题、加粗、列表、表格、引用块）
- *  - 通义千问 Qwen-2.5 真实在线流式打字效果与打断控制（AbortController）
- *  - 场景化卡片式推荐提问（一键发起）
- *  - 消息一键复制、重新生成、会话导出
- *  - 买家置业画像侧拉抽屉无感编辑
+ * 肇庆好房子 · 智能选房顾问（Kimi 风格简洁对话界面）
+ * 设计理念：
+ *  - 温暖、简洁、单栏居中布局，拒绝"AI工作站"既视感
+ *  - 柔和圆角卡片、宽松留白、友好对话氛围
+ *  - 居中欢迎页 + 建议卡片网格
+ *  - 底部居中输入框，干净利落
  */
 
 const md = new MarkdownIt({
@@ -26,6 +23,8 @@ export interface Turn {
   id: string
   role: 'user' | 'assistant'
   content: string
+  thinking?: string
+  showThinking?: boolean
   source?: 'ai' | 'fallback'
   time: string
 }
@@ -68,36 +67,25 @@ const profile = reactive({
 
 const SCENARIO_CARDS = [
   {
-    icon: '👨‍👩‍👧‍👦',
-    title: '三代同堂置业选房',
-    desc: '预算 160 万内，想要 3-4 房，重视通风与双卫',
+    emoji: '🏠',
+    title: '三代同堂选房',
     prompt: '三代同住，预算 160 万内，想要 3-4 房，重视通风与双卫，推荐哪套户型？',
   },
   {
-    icon: '☀️',
-    title: '星湖高采光通透户型',
-    desc: '端州区星湖附近，窗地比和采光日照最好的户型',
+    emoji: '☀️',
+    title: '高采光通透户型',
     prompt: '端州区星湖附近，哪套户型窗地比和采光日照最好？',
   },
   {
-    icon: '📐',
-    title: '高得房率与实用空间',
-    desc: '注重得房率和收纳空间，走道少、异形少的户型有哪些？',
+    emoji: '📐',
+    title: '高得房率实用型',
     prompt: '注重得房率和收纳空间，走道少、异形少的户型有哪些？',
   },
   {
-    icon: '💰',
-    title: '刚需首套高性价比',
-    desc: '预算 100 万左右，推荐两房一卫、居住舒适度最高的户型',
+    emoji: '💰',
+    title: '刚需高性价比',
     prompt: '预算 100 万左右，推荐两房一卫、居住舒适度最高的户型',
   },
-]
-
-const QUICK_CHIPS = [
-  '星湖澜庭 89㎡ 户型优缺点分析',
-  '西江云上临江大户型采光如何？',
-  '端州区均价 9500 左右高分房源',
-  '哪些户型实现了全明厨卫？',
 ]
 
 const currentSession = computed(() => {
@@ -130,9 +118,9 @@ async function saveProfile() {
     cached.profileCompleteness = completeness.value
     localStorage.setItem('hf-user', JSON.stringify(cached))
     showProfileDrawer.value = false
-    ElMessage.success('置业偏好画像已同步更新')
+    ElMessage.success('偏好已更新')
   } catch {
-    ElMessage.error('保存画像失败')
+    ElMessage.error('保存失败')
   }
 }
 
@@ -169,47 +157,15 @@ async function createNewChat() {
   const newId = `session_${Date.now()}`
   const newSession: ChatSession = {
     id: newId,
-    title: '新选房咨询',
+    title: '新对话',
     updatedAt: '刚刚',
     messages: [],
   }
   sessions.value.unshift(newSession)
   currentSessionId.value = newId
   messages.value = []
-  ElMessage.success('已开启新一轮智能选房对话')
   await nextTick()
   inputRef.value?.focus()
-}
-
-function switchSession(sess: ChatSession) {
-  if (sending.value) stopGeneration()
-  currentSessionId.value = sess.id
-  messages.value = [...sess.messages]
-  scrollDown()
-}
-
-function deleteSession(e: Event, id: string) {
-  e.stopPropagation()
-  if (sessions.value.length <= 1) {
-    createNewChat()
-    return
-  }
-  sessions.value = sessions.value.filter((s) => s.id !== id)
-  if (currentSessionId.value === id) {
-    currentSessionId.value = sessions.value[0].id
-    messages.value = [...sessions.value[0].messages]
-  }
-}
-
-async function resetCurrentChat() {
-  if (sending.value) stopGeneration()
-  try {
-    await del('/ai/chat')
-  } catch {}
-  messages.value = []
-  currentSession.value.messages = []
-  currentSession.value.title = '新选房咨询'
-  ElMessage.success('已清空当前对话记录')
 }
 
 function stopGeneration() {
@@ -218,7 +174,6 @@ function stopGeneration() {
     abortCtrl = null
   }
   sending.value = false
-  ElMessage.info('已停止生成')
 }
 
 function applyEvent(raw: string, turn: Turn) {
@@ -232,6 +187,8 @@ function applyEvent(raw: string, turn: Turn) {
     const ev = JSON.parse(data) as { type?: string; text?: string; source?: string }
     if (ev.type === 'token' && ev.text) {
       turn.content += ev.text
+    } else if (ev.type === 'thinking' && ev.text) {
+      turn.thinking = (turn.thinking || '') + ev.text
     } else if (ev.type === 'done') {
       turn.source = ev.source === 'fallback' ? 'fallback' : 'ai'
     }
@@ -260,6 +217,8 @@ async function ask(preset?: string) {
     id: `ai_${Date.now()}`,
     role: 'assistant',
     content: '',
+    thinking: '',
+    showThinking: true,
     source: 'ai',
     time: formatTime(),
   }
@@ -284,7 +243,7 @@ async function ask(preset?: string) {
 
     const type = res.headers.get('content-type') || ''
     if (!res.ok || !type.includes('text/event-stream') || !res.body) {
-      aiTurn.content = '顾问服务网络繁忙，已转入离线规则引擎为您分析。'
+      aiTurn.content = '网络繁忙，已转入离线分析模式。'
       aiTurn.source = 'fallback'
       return
     }
@@ -308,13 +267,13 @@ async function ask(preset?: string) {
     if (buf.trim()) applyEvent(buf, aiTurn)
 
     if (!aiTurn.content) {
-      aiTurn.content = '抱歉，暂时没有匹配到该户型的评分依据，请稍后换个方式咨询。'
+      aiTurn.content = '暂时没有找到匹配的结果，换个问法试试？'
       aiTurn.source = 'fallback'
     }
   } catch (err: any) {
     if (err.name !== 'AbortError') {
       if (!aiTurn.content) {
-        aiTurn.content = '网络通信异常，请检查后端模型服务状态。'
+        aiTurn.content = '网络异常，请稍后重试。'
         aiTurn.source = 'fallback'
       }
     }
@@ -329,7 +288,6 @@ async function ask(preset?: string) {
 function copyMessage(turn: Turn) {
   navigator.clipboard.writeText(turn.content).then(() => {
     copiedId.value = turn.id
-    ElMessage.success('已复制到剪贴板')
     setTimeout(() => {
       copiedId.value = null
     }, 2000)
@@ -337,21 +295,17 @@ function copyMessage(turn: Turn) {
 }
 
 function exportChat() {
-  if (!messages.value.length) {
-    ElMessage.warning('当前无对话内容可导出')
-    return
-  }
+  if (!messages.value.length) return
   const text = messages.value
-    .map((m) => `[${m.time}] ${m.role === 'user' ? '购房者' : 'AI顾问'}:\n${m.content}\n`)
+    .map((m) => `[${m.time}] ${m.role === 'user' ? '我' : '顾问'}:\n${m.content}\n`)
     .join('\n---\n\n')
   const blob = new Blob([text], { type: 'text/markdown;charset=utf-8' })
   const url = URL.createObjectURL(blob)
   const a = document.createElement('a')
   a.href = url
-  a.download = `肇庆好房子_选房顾问咨询记录_${new Date().toISOString().slice(0, 10)}.md`
+  a.download = `选房咨询_${new Date().toISOString().slice(0, 10)}.md`
   a.click()
   URL.revokeObjectURL(url)
-  ElMessage.success('对话记录已导出为 Markdown 文件')
 }
 
 function onKeydown(e: KeyboardEvent) {
@@ -378,350 +332,211 @@ onMounted(async () => {
 </script>
 
 <template>
-  <div class="ai-studio-container">
-    <!-- 左侧会话侧栏 -->
-    <aside class="ai-sidebar">
-      <div class="sidebar-header">
-        <div class="sidebar-brand">
-          <div class="brand-avatar">✦</div>
-          <div>
-            <div class="brand-title">好房子 · 智囊</div>
-            <div class="brand-tag">通义千问 Qwen-2.5</div>
-          </div>
-        </div>
-        <button type="button" class="new-chat-btn" @click="createNewChat">
-          <svg viewBox="0 0 16 16" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2">
-            <path d="M8 3v10M3 8h10" />
+  <div class="kimi-page">
+    <!-- 顶部极简操作栏 -->
+    <header class="kimi-topbar">
+      <div class="topbar-left">
+        <button type="button" class="topbar-icon-btn" title="新对话" @click="createNewChat">
+          <svg viewBox="0 0 20 20" width="18" height="18" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round">
+            <path d="M10 4v12M4 10h12" />
           </svg>
-          开启新对话
         </button>
       </div>
+      <div class="topbar-center">
+        <span class="topbar-model-label">好房子 · 选房顾问</span>
+        <span class="topbar-model-tag">Qwen3.5-4B · 深度思考</span>
+      </div>
+      <div class="topbar-right">
+        <button v-if="messages.length" type="button" class="topbar-text-btn" @click="exportChat">导出</button>
+        <button type="button" class="topbar-text-btn" @click="showProfileDrawer = true">偏好设置</button>
+      </div>
+    </header>
 
-      <!-- 会话历史列表 -->
-      <div class="sessions-scroll">
-        <div class="sessions-sec-title">近期选房会话</div>
-        <div class="session-list">
-          <div
-            v-for="s in sessions"
-            :key="s.id"
-            class="session-item"
-            :class="{ active: s.id === currentSessionId }"
-            @click="switchSession(s)"
-          >
-            <div class="session-icon">💬</div>
-            <div class="session-meta">
-              <span class="session-title">{{ s.title }}</span>
-              <span class="session-time">{{ s.updatedAt }}</span>
-            </div>
+    <!-- 对话主体 -->
+    <div ref="box" class="kimi-body">
+      <!-- 空状态：居中欢迎 -->
+      <div v-if="!messages.length" class="welcome-wrap">
+        <div class="welcome-inner">
+          <div class="welcome-avatar">
+            <svg viewBox="0 0 40 40" width="40" height="40" fill="none">
+              <rect width="40" height="40" rx="12" fill="#155e75" />
+              <path d="M12 28V16l8-5 8 5v12l-8 5-8-5z" fill="none" stroke="#fff" stroke-width="1.5" stroke-linejoin="round"/>
+              <circle cx="20" cy="20" r="3" fill="#fff" opacity="0.9"/>
+            </svg>
+          </div>
+          <h1 class="welcome-hi">你好，我是你的选房顾问</h1>
+          <p class="welcome-sub">由通义千问 Qwen3.5-4B 原生多模态模型与国家住宅规范联合驱动，支持 256K 深度对话</p>
+
+          <div class="suggest-grid">
             <button
+              v-for="(c, i) in SCENARIO_CARDS"
+              :key="i"
               type="button"
-              class="del-session-btn"
-              title="删除此会话"
-              @click="deleteSession($event, s.id)"
+              class="suggest-card"
+              @click="ask(c.prompt)"
             >
-              ×
+              <span class="suggest-emoji">{{ c.emoji }}</span>
+              <span class="suggest-text">{{ c.title }}</span>
+              <svg class="suggest-arrow" viewBox="0 0 16 16" width="14" height="14" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round">
+                <path d="M6 4l4 4-4 4" />
+              </svg>
             </button>
           </div>
         </div>
       </div>
 
-      <!-- 底部置业偏好看板卡片 -->
-      <div class="profile-dock-card">
-        <div class="profile-dock-header">
-          <span class="dock-badge">👤 买家置业画像</span>
-          <button type="button" class="dock-edit-btn" @click="showProfileDrawer = true">
-            修改
-          </button>
-        </div>
-        <div class="profile-dock-content">
-          <div class="dock-stat">
-            <span class="label">预算区间</span>
-            <span class="val hf-num">
-              {{ profile.budgetMin ? (profile.budgetMin / 10000).toFixed(0) : '0' }} -
-              {{ profile.budgetMax ? (profile.budgetMax / 10000).toFixed(0) : '不限' }} 万
-            </span>
-          </div>
-          <div class="dock-stat">
-            <span class="label">居室/朝向</span>
-            <span class="val">{{ profile.mustRooms }}房 · {{ profile.preferOrientation }}向</span>
-          </div>
-        </div>
-      </div>
-    </aside>
-
-    <!-- 右侧沉浸式主对话区 -->
-    <main class="ai-main-chat">
-      <!-- 顶部玻璃拟态 Header -->
-      <header class="chat-topbar">
-        <div class="topbar-left">
-          <div class="online-indicator">
-            <span class="pulse-dot"></span>
-          </div>
-          <div class="topbar-info">
-            <h2 class="topbar-title">智能置业顾问 · 专业版</h2>
-            <p class="topbar-subtitle">已接入真实国家《住宅项目规范》与外置 JSON DSL 规则引擎</p>
-          </div>
-        </div>
-
-        <div class="topbar-actions">
-          <button
-            type="button"
-            class="top-btn"
-            title="清空当前消息"
-            :disabled="sending || !messages.length"
-            @click="resetCurrentChat"
-          >
-            <svg viewBox="0 0 16 16" width="14" height="14" fill="none" stroke="currentColor" stroke-width="1.8">
-              <path d="M3 5h10M6 5V3h4v2M5 5v8a1 1 0 0 0 1 1h4a1 1 0 0 0 1-1V5" />
+      <!-- 对话消息流 -->
+      <div v-else class="msg-list">
+        <div
+          v-for="m in messages"
+          :key="m.id"
+          class="msg-row"
+          :class="m.role"
+        >
+          <!-- AI 头像 -->
+          <div v-if="m.role === 'assistant'" class="msg-avatar">
+            <svg viewBox="0 0 28 28" width="28" height="28" fill="none">
+              <rect width="28" height="28" rx="8" fill="#155e75" />
+              <path d="M8 20V12l6-4 6 4v8l-6 4-6-4z" fill="none" stroke="#fff" stroke-width="1.2" stroke-linejoin="round"/>
+              <circle cx="14" cy="14" r="2" fill="#fff" opacity="0.85"/>
             </svg>
-            清空
-          </button>
-          <button
-            type="button"
-            class="top-btn"
-            title="导出对话记录"
-            :disabled="!messages.length"
-            @click="exportChat"
-          >
-            <svg viewBox="0 0 16 16" width="14" height="14" fill="none" stroke="currentColor" stroke-width="1.8">
-              <path d="M8 2v9M4 8l4 4 4-4M2 13h12" />
-            </svg>
-            导出
-          </button>
-          <button
-            type="button"
-            class="top-btn accent-btn"
-            @click="showProfileDrawer = true"
-          >
-            ⚙️ 画像偏好
-          </button>
-        </div>
-      </header>
-
-      <!-- 消息流容器 -->
-      <div ref="box" class="messages-container">
-        <!-- 空状态欢迎界面（GitHub 风格卡片网格） -->
-        <div v-if="!messages.length" class="welcome-container">
-          <div class="welcome-hero">
-            <div class="welcome-spark">✦</div>
-            <h1 class="welcome-title">您好，我是您的星湖好房子专属选房顾问</h1>
-            <p class="welcome-desc">
-              为您深度解析户型采光日照、动线布局、得房率与多方案横向对比。请点击下方常见诉求，或直接在底部输入咨询：
-            </p>
           </div>
 
-          <div class="scenarios-grid">
+          <div class="msg-content-wrap">
             <div
-              v-for="(c, i) in SCENARIO_CARDS"
-              :key="i"
-              class="scenario-card"
-              @click="ask(c.prompt)"
+              class="msg-bubble"
+              :class="m.role"
             >
-              <div class="sc-icon">{{ c.icon }}</div>
-              <div class="sc-content">
-                <h4 class="sc-title">{{ c.title }}</h4>
-                <p class="sc-desc">{{ c.desc }}</p>
-              </div>
-              <div class="sc-arrow">→</div>
-            </div>
-          </div>
-        </div>
+              <!-- 用户消息 -->
+              <div v-if="m.role === 'user'" class="user-text">{{ m.content }}</div>
 
-        <!-- 真实对话消息流 -->
-        <div v-else class="message-stream">
-          <div
-            v-for="m in messages"
-            :key="m.id"
-            class="message-row"
-            :class="m.role === 'user' ? 'row-user' : 'row-assistant'"
-          >
-            <!-- 顾问头像 -->
-            <div v-if="m.role === 'assistant'" class="avatar-box ai-avatar-box">
-              <span class="avatar-icon">🏛️</span>
-            </div>
-
-            <div class="bubble-envelope">
-              <!-- 顾问消息头部 meta -->
-              <div v-if="m.role === 'assistant'" class="msg-header-meta">
-                <span class="role-name">置业专家 AI</span>
-                <span
-                  class="source-badge"
-                  :class="m.source === 'fallback' ? 'badge-fallback' : 'badge-real-ai'"
-                >
-                  <span class="badge-dot"></span>
-                  {{ m.source === 'fallback' ? '规则引擎离线模板' : '通义千问 Qwen-2.5 流式在线' }}
-                </span>
-                <span class="msg-time">{{ m.time }}</span>
-              </div>
-
-              <!-- 消息气泡正文 -->
-              <div
-                class="bubble-card"
-                :class="m.role === 'user' ? 'bubble-user' : 'bubble-assistant'"
-              >
-                <!-- 用户提问（纯文本带换行） -->
-                <div v-if="m.role === 'user'" class="user-text">
-                  {{ m.content }}
-                </div>
-
-                <!-- AI 回答（Markdown 富文本渲染） -->
-                <div v-else class="assistant-markdown-body">
-                  <div
-                    v-if="m.content"
-                    class="markdown-content"
-                    v-html="renderMarkdown(m.content)"
-                  />
-                  <!-- 流式打字中光标 -->
-                  <span
-                    v-if="sending && m === messages[messages.length - 1]"
-                    class="typewriter-cursor"
-                  >▍</span>
-                  <div
-                    v-if="sending && m === messages[messages.length - 1] && !m.content"
-                    class="ai-thinking-state"
+              <!-- AI 消息 -->
+              <template v-else>
+                <!-- 思考过程 (Thinking Mode) 展开/收起卡片 -->
+                <div v-if="m.thinking" class="thinking-card">
+                  <button
+                    type="button"
+                    class="thinking-header"
+                    @click="m.showThinking = (m.showThinking === undefined ? false : !m.showThinking)"
                   >
-                    <span class="spinner-dot"></span>
-                    <span>正在检索户型几何参数并调取规则引擎分析中…</span>
+                    <span class="thinking-sparkle">✦</span>
+                    <span class="thinking-title">
+                      {{ sending && m === messages[messages.length - 1] && !m.content ? '正在思考中...' : '已深度思考' }}
+                    </span>
+                    <svg
+                      class="thinking-arrow"
+                      :class="{ open: m.showThinking !== false }"
+                      viewBox="0 0 16 16"
+                      width="12"
+                      height="12"
+                      fill="none"
+                      stroke="currentColor"
+                      stroke-width="1.8"
+                      stroke-linecap="round"
+                    >
+                      <path d="M4 6l4 4 4-4" />
+                    </svg>
+                  </button>
+                  <div v-show="m.showThinking !== false" class="thinking-body">
+                    {{ m.thinking }}
                   </div>
                 </div>
 
-                <!-- 操作栏（仅针对 AI 消息且有内容时） -->
-                <div v-if="m.role === 'assistant' && m.content" class="msg-tools-row">
-                  <button
-                    type="button"
-                    class="tool-btn"
-                    title="复制回复"
-                    @click="copyMessage(m)"
-                  >
-                    <svg viewBox="0 0 16 16" width="12" height="12" fill="none" stroke="currentColor" stroke-width="1.8">
-                      <rect x="5" y="5" width="8" height="8" rx="1.5" />
-                      <path d="M3 11V3h8" />
-                    </svg>
-                    <span>{{ copiedId === m.id ? '已复制' : '复制' }}</span>
-                  </button>
-                  <button
-                    type="button"
-                    class="tool-btn"
-                    title="重新生成"
-                    :disabled="sending"
-                    @click="ask(messages[messages.indexOf(m) - 1]?.content)"
-                  >
-                    <svg viewBox="0 0 16 16" width="12" height="12" fill="none" stroke="currentColor" stroke-width="1.8">
-                      <path d="M2 8a6 6 0 1 1 1.76 4.24M2 8V4m0 4h4" />
-                    </svg>
-                    <span>重新回答</span>
-                  </button>
+                <div
+                  v-if="m.content"
+                  class="md-body"
+                  v-html="renderMarkdown(m.content)"
+                />
+                <span
+                  v-if="sending && m === messages[messages.length - 1] && m.content"
+                  class="cursor-blink"
+                >|</span>
+                <div
+                  v-if="sending && m === messages[messages.length - 1] && !m.content && !m.thinking"
+                  class="thinking"
+                >
+                  <span class="dot-1">·</span>
+                  <span class="dot-2">·</span>
+                  <span class="dot-3">·</span>
+                  <span class="thinking-text">正在分析户型数据</span>
                 </div>
-              </div>
-
-              <!-- 用户端的时间戳 -->
-              <div v-if="m.role === 'user'" class="user-meta-row">
-                <span class="msg-time">{{ m.time }}</span>
-              </div>
+              </template>
             </div>
 
-            <!-- 用户头像 -->
-            <div v-if="m.role === 'user'" class="avatar-box user-avatar-box">
-              <AppIcon name="user" :size="16" />
+            <!-- AI 消息操作 -->
+            <div v-if="m.role === 'assistant' && m.content && !(sending && m === messages[messages.length - 1])" class="msg-actions">
+              <button type="button" class="action-btn" @click="copyMessage(m)">
+                {{ copiedId === m.id ? '已复制 ✓' : '复制' }}
+              </button>
+              <button
+                type="button"
+                class="action-btn"
+                :disabled="sending"
+                @click="ask(messages[messages.indexOf(m) - 1]?.content)"
+              >
+                重新回答
+              </button>
             </div>
           </div>
         </div>
       </div>
+    </div>
 
-      <!-- 底部悬浮输入 Dock -->
-      <footer class="composer-dock-container">
-        <div class="composer-dock-inner">
-          <!-- 快捷提问药丸滑动栏 -->
-          <div class="chips-bar">
-            <span class="chips-label">💡 猜您想问：</span>
-            <div class="chips-scroll">
-              <button
-                v-for="(chip, i) in QUICK_CHIPS"
-                :key="i"
-                type="button"
-                class="chip-pill"
-                :disabled="sending"
-                @click="ask(chip)"
-              >
-                {{ chip }}
-              </button>
-            </div>
-          </div>
-
-          <!-- 输入框卡片容器 -->
-          <div class="input-card" :class="{ focused: sending }">
-            <textarea
-              ref="inputRef"
-              v-model="q"
-              rows="2"
-              class="dock-textarea"
-              placeholder="输入您关心的选房需求，如：预算、家庭人口、朝向或想了解的户型... (Enter 发送，Shift+Enter 换行)"
-              :disabled="sending"
-              @keydown="onKeydown"
-            />
-
-            <!-- 底部工具控制行 -->
-            <div class="input-controls-row">
-              <div class="control-left">
-                <span class="model-badge">
-                  <span class="model-spark">✨</span>
-                  <span>Qwen-2.5 在线</span>
-                </span>
-                <span class="hint-text">按 Enter 发送 / Shift+Enter 换行</span>
-              </div>
-
-              <div class="control-right">
-                <!-- 停止生成按钮 -->
-                <button
-                  v-if="sending"
-                  type="button"
-                  class="stop-btn"
-                  @click="stopGeneration"
-                >
-                  <span class="stop-icon">■</span>
-                  <span>停止生成</span>
-                </button>
-
-                <!-- 发送按钮 -->
-                <button
-                  v-else
-                  type="button"
-                  class="send-btn"
-                  :disabled="!q.trim()"
-                  @click="ask()"
-                >
-                  <span>发送咨询</span>
-                  <svg viewBox="0 0 16 16" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2">
-                    <path d="M14 2L7 9m7-7l-5 12-2-5-5-2 12-5z" />
-                  </svg>
-                </button>
-              </div>
-            </div>
-          </div>
-
-          <div class="compliance-footer">
-            <span>🛡️ 规则引擎与国家《住宅项目规范》联合驱动 · 数据客观溯源 · 不编造投资与贷款承诺</span>
+    <!-- 底部输入区 -->
+    <footer class="kimi-footer">
+      <div class="input-wrap">
+        <div class="input-box" :class="{ active: sending }">
+          <textarea
+            ref="inputRef"
+            v-model="q"
+            rows="1"
+            class="input-area"
+            placeholder="描述你的选房需求..."
+            :disabled="sending"
+            @keydown="onKeydown"
+            @input="($event.target as HTMLTextAreaElement).style.height = 'auto'; ($event.target as HTMLTextAreaElement).style.height = ($event.target as HTMLTextAreaElement).scrollHeight + 'px'"
+          />
+          <div class="input-actions">
+            <button
+              v-if="sending"
+              type="button"
+              class="stop-btn"
+              @click="stopGeneration"
+            >
+              <svg viewBox="0 0 16 16" width="14" height="14" fill="currentColor">
+                <rect x="3" y="3" width="10" height="10" rx="2" />
+              </svg>
+            </button>
+            <button
+              v-else
+              type="button"
+              class="send-btn"
+              :disabled="!q.trim()"
+              @click="ask()"
+            >
+              <svg viewBox="0 0 20 20" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                <path d="M5 10l5-5m0 0l5 5m-5-5v12" />
+              </svg>
+            </button>
           </div>
         </div>
-      </footer>
-    </main>
+        <p class="footer-hint">基于规则引擎与国家住宅规范数据，结果仅供参考</p>
+      </div>
+    </footer>
 
-    <!-- 买家置业画像侧拉抽屉 (Drawer) -->
+    <!-- 偏好设置抽屉 -->
     <el-drawer
       v-model="showProfileDrawer"
-      title="买家置业偏好画像设置"
+      title="选房偏好"
       direction="rtl"
-      size="400px"
-      custom-class="profile-drawer-custom"
+      size="380px"
     >
-      <div class="drawer-body">
-        <p class="drawer-desc">
-          AI 顾问将根据您的预算、家庭结构与偏好指标，从 20 套户型中匹配打分最优的方案。
-        </p>
+      <div class="pref-body">
+        <p class="pref-desc">顾问会根据你的偏好，从在售户型中匹配最合适的方案。</p>
 
-        <div class="drawer-form-item">
-          <label>预算区间 (元)</label>
-          <div class="budget-dual-row">
+        <div class="pref-item">
+          <label>预算范围（元）</label>
+          <div class="budget-row">
             <el-input-number
               v-model="profile.budgetMin"
               :min="0"
@@ -729,7 +544,7 @@ onMounted(async () => {
               placeholder="最低"
               style="width: 48%"
             />
-            <span class="sep">-</span>
+            <span class="budget-sep">—</span>
             <el-input-number
               v-model="profile.budgetMax"
               :min="0"
@@ -740,996 +555,670 @@ onMounted(async () => {
           </div>
         </div>
 
-        <div class="drawer-form-item">
-          <label>家庭常住结构</label>
+        <div class="pref-item">
+          <label>家庭结构</label>
           <el-select v-model="profile.familyStructure" style="width: 100%">
-            <el-option label="单身自住 (SINGLE)" value="SINGLE" />
-            <el-option label="新婚两口之家 (COUPLE)" value="COUPLE" />
-            <el-option label="三口之家 (带学龄儿童) (FAMILY_3)" value="FAMILY_3" />
-            <el-option label="三代同堂 (有老人同住) (THREE_GEN)" value="THREE_GEN" />
+            <el-option label="单身自住" value="SINGLE" />
+            <el-option label="二人世界" value="COUPLE" />
+            <el-option label="三口之家" value="FAMILY_3" />
+            <el-option label="三代同堂" value="THREE_GEN" />
           </el-select>
         </div>
 
-        <div class="drawer-form-item">
-          <label>期望最少居室数</label>
+        <div class="pref-item">
+          <label>最少居室</label>
           <el-input-number v-model="profile.mustRooms" :min="1" :max="6" style="width: 100%" />
         </div>
 
-        <div class="drawer-form-item">
-          <label>首选采光主朝向</label>
+        <div class="pref-item">
+          <label>朝向偏好</label>
           <el-select v-model="profile.preferOrientation" style="width: 100%">
-            <el-option label="正南朝向 (S)" value="S" />
-            <el-option label="南北通透 (NS)" value="NS" />
-            <el-option label="东南朝向 (SE)" value="SE" />
-            <el-option label="西南朝向 (SW)" value="SW" />
+            <el-option label="正南" value="S" />
+            <el-option label="南北通透" value="NS" />
+            <el-option label="东南" value="SE" />
+            <el-option label="西南" value="SW" />
           </el-select>
         </div>
 
-        <div class="drawer-actions">
-          <el-button type="primary" size="large" class="w-full" @click="saveProfile">
-            保存并立即生效
-          </el-button>
-        </div>
+        <el-button type="primary" size="large" style="width: 100%; margin-top: 16px" @click="saveProfile">
+          保存
+        </el-button>
       </div>
     </el-drawer>
   </div>
 </template>
 
 <style scoped>
-/* 整个 AI 交互 Studio 全屏工作台 */
-.ai-studio-container {
+/* ─── Kimi-style: 温暖、简洁、单栏居中 ─── */
+
+.kimi-page {
   display: flex;
+  flex-direction: column;
   height: calc(100vh - 72px);
-  background: var(--hf-bg);
+  background: #fafafa;
   overflow: hidden;
-  position: relative;
-  font-family: inherit;
 }
 
-/* ───────────────────────── 左侧侧边栏 ───────────────────────── */
-.ai-sidebar {
-  width: 280px;
-  background: #ffffff;
-  border-right: 1px solid var(--hf-border);
+/* ─── 顶栏：极简一行 ─── */
+.kimi-topbar {
+  height: 52px;
+  padding: 0 20px;
   display: flex;
-  flex-direction: column;
+  align-items: center;
+  justify-content: space-between;
+  border-bottom: 1px solid #f0f0f0;
+  background: #fff;
   flex-shrink: 0;
-  box-shadow: 2px 0 12px rgba(0, 0, 0, 0.02);
+  z-index: 10;
 }
 
-.sidebar-header {
-  padding: 18px 16px 14px;
-  border-bottom: 1px solid var(--hf-border);
+.topbar-left, .topbar-right {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.topbar-center {
+  position: absolute;
+  left: 50%;
+  transform: translateX(-50%);
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.topbar-model-label {
+  font-size: 14px;
+  font-weight: 600;
+  color: #333;
+  letter-spacing: 0.01em;
+}
+
+.topbar-model-tag {
+  font-size: 11px;
+  font-weight: 500;
+  color: #0891b2;
+  background: #f0fdfa;
+  border: 1px solid #ccfbf1;
+  padding: 1px 8px;
+  border-radius: 9999px;
+  letter-spacing: 0.02em;
+}
+
+.topbar-icon-btn {
+  width: 34px;
+  height: 34px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: transparent;
+  border: 1px solid #e8e8e8;
+  border-radius: 10px;
+  color: #666;
+  cursor: pointer;
+  transition: all 0.15s;
+}
+.topbar-icon-btn:hover {
+  background: #f5f5f5;
+  color: #333;
+  border-color: #ddd;
+}
+
+.topbar-text-btn {
+  padding: 6px 12px;
+  background: transparent;
+  border: none;
+  font-size: 13px;
+  color: #888;
+  cursor: pointer;
+  border-radius: 6px;
+  transition: all 0.15s;
+}
+.topbar-text-btn:hover {
+  background: #f5f5f5;
+  color: #333;
+}
+
+/* ─── 对话主体：居中滚动 ─── */
+.kimi-body {
+  flex: 1;
+  overflow-y: auto;
+  padding-bottom: 160px;
+}
+
+/* 滚动条美化 */
+.kimi-body::-webkit-scrollbar {
+  width: 5px;
+}
+.kimi-body::-webkit-scrollbar-thumb {
+  background: #ddd;
+  border-radius: 3px;
+}
+.kimi-body::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+/* ─── 欢迎页：居中温暖 ─── */
+.welcome-wrap {
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  min-height: 100%;
+  padding: 40px 24px;
+}
+
+.welcome-inner {
+  max-width: 560px;
+  width: 100%;
   display: flex;
   flex-direction: column;
-  gap: 14px;
+  align-items: center;
+  text-align: center;
 }
 
-.sidebar-brand {
+.welcome-avatar {
+  margin-bottom: 20px;
+}
+
+.welcome-hi {
+  font-size: 26px;
+  font-weight: 700;
+  color: #1a1a1a;
+  margin: 0 0 10px;
+  letter-spacing: -0.02em;
+  line-height: 1.3;
+}
+
+.welcome-sub {
+  font-size: 15px;
+  color: #999;
+  margin: 0 0 36px;
+  line-height: 1.6;
+  max-width: 420px;
+}
+
+.suggest-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 10px;
+  width: 100%;
+}
+
+.suggest-card {
   display: flex;
   align-items: center;
   gap: 10px;
-}
-
-.brand-avatar {
-  width: 34px;
-  height: 34px;
-  border-radius: 8px;
-  background: linear-gradient(135deg, #155e75, #0891b2);
-  color: #ffffff;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  font-size: 15px;
-  font-weight: 800;
-  box-shadow: 0 2px 6px rgba(21, 94, 117, 0.25);
-}
-
-.brand-title {
-  font-size: 14px;
-  font-weight: 700;
-  color: var(--hf-ink);
-  line-height: 1.2;
-}
-
-.brand-tag {
-  font-size: 11px;
-  color: #0891b2;
-  font-weight: 600;
-}
-
-.new-chat-btn {
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  gap: 6px;
-  width: 100%;
-  padding: 9px 14px;
-  background: #155e75;
-  color: #ffffff;
-  border: none;
-  border-radius: 8px;
-  font-size: 13px;
-  font-weight: 600;
+  padding: 14px 16px;
+  background: #fff;
+  border: 1px solid #eee;
+  border-radius: 12px;
   cursor: pointer;
-  transition: all var(--hf-dur);
-  box-shadow: 0 2px 6px rgba(21, 94, 117, 0.2);
+  transition: all 0.2s;
+  text-align: left;
 }
-.new-chat-btn:hover {
-  background: #0e7490;
+.suggest-card:hover {
+  border-color: #d0d0d0;
+  box-shadow: 0 2px 12px rgba(0,0,0,0.04);
   transform: translateY(-1px);
 }
 
-.sessions-scroll {
-  flex: 1;
-  overflow-y: auto;
-  padding: 12px 10px;
-}
-
-.sessions-sec-title {
-  font-size: 11px;
-  font-weight: 700;
-  color: var(--hf-text-3);
-  text-transform: uppercase;
-  letter-spacing: 0.05em;
-  padding: 4px 8px 8px;
-}
-
-.session-list {
-  display: flex;
-  flex-direction: column;
-  gap: 4px;
-}
-
-.session-item {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  padding: 8px 10px;
-  border-radius: 8px;
-  cursor: pointer;
-  transition: all var(--hf-dur);
-  border: 1px solid transparent;
-  position: relative;
-}
-
-.session-item:hover {
-  background: #f1f5f9;
-}
-
-.session-item.active {
-  background: #f0fdfa;
-  border-color: #99f6e4;
-}
-
-.session-icon {
-  font-size: 13px;
-}
-
-.session-meta {
-  flex: 1;
-  min-width: 0;
-  display: flex;
-  flex-direction: column;
-}
-
-.session-title {
-  font-size: 13px;
-  font-weight: 500;
-  color: var(--hf-ink);
-  white-space: nowrap;
-  overflow: hidden;
-  text-overflow: ellipsis;
-}
-
-.session-item.active .session-title {
-  font-weight: 600;
-  color: #155e75;
-}
-
-.session-time {
-  font-size: 11px;
-  color: var(--hf-text-3);
-}
-
-.del-session-btn {
-  opacity: 0;
-  background: transparent;
-  border: none;
-  font-size: 16px;
-  color: var(--hf-text-3);
-  cursor: pointer;
-  padding: 0 4px;
-  transition: opacity var(--hf-dur);
-}
-.session-item:hover .del-session-btn {
-  opacity: 1;
-}
-.del-session-btn:hover {
-  color: #ef4444;
-}
-
-/* 侧栏底部买家看板 */
-.profile-dock-card {
-  margin: 10px;
-  padding: 12px;
-  background: #f8fafc;
-  border: 1px solid var(--hf-border);
-  border-radius: 8px;
-}
-
-.profile-dock-header {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  margin-bottom: 8px;
-}
-
-.dock-badge {
-  font-size: 11px;
-  font-weight: 700;
-  color: var(--hf-text-2);
-}
-
-.dock-edit-btn {
-  background: transparent;
-  border: none;
-  font-size: 11px;
-  color: #0891b2;
-  cursor: pointer;
-  font-weight: 600;
-}
-.dock-edit-btn:hover {
-  text-decoration: underline;
-}
-
-.profile-dock-content {
-  display: flex;
-  flex-direction: column;
-  gap: 4px;
-}
-
-.dock-stat {
-  display: flex;
-  justify-content: space-between;
-  font-size: 12px;
-}
-
-.dock-stat .label {
-  color: var(--hf-text-3);
-}
-
-.dock-stat .val {
-  color: var(--hf-ink);
-  font-weight: 600;
-}
-
-/* ───────────────────────── 右侧主对话区 ───────────────────────── */
-.ai-main-chat {
-  flex: 1;
-  display: flex;
-  flex-direction: column;
-  height: 100%;
-  position: relative;
-  background: var(--hf-bg);
-  background-image: radial-gradient(#cbd5e1 1px, transparent 1px);
-  background-size: 24px 24px;
-}
-
-/* 顶栏 */
-.chat-topbar {
-  height: 56px;
-  padding: 0 24px;
-  background: rgba(255, 255, 255, 0.85);
-  backdrop-filter: blur(10px);
-  border-bottom: 1px solid var(--hf-border);
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  z-index: 10;
-  box-shadow: 0 1px 4px rgba(0, 0, 0, 0.02);
-}
-
-.topbar-left {
-  display: flex;
-  align-items: center;
-  gap: 10px;
-}
-
-.online-indicator {
-  display: flex;
-  align-items: center;
-  justify-content: center;
-}
-
-.pulse-dot {
-  width: 8px;
-  height: 8px;
-  background: #10b981;
-  border-radius: 50%;
-  box-shadow: 0 0 0 2px rgba(16, 185, 129, 0.2);
-  animation: pulseDot 2s infinite;
-}
-
-@keyframes pulseDot {
-  0% { transform: scale(0.95); box-shadow: 0 0 0 0 rgba(16, 185, 129, 0.7); }
-  70% { transform: scale(1); box-shadow: 0 0 0 6px rgba(16, 185, 129, 0); }
-  100% { transform: scale(0.95); box-shadow: 0 0 0 0 rgba(16, 185, 129, 0); }
-}
-
-.topbar-title {
-  font-size: 14px;
-  font-weight: 700;
-  color: var(--hf-ink);
-  margin: 0;
-}
-
-.topbar-subtitle {
-  font-size: 11px;
-  color: var(--hf-text-3);
-  margin: 0;
-}
-
-.topbar-actions {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-}
-
-.top-btn {
-  display: inline-flex;
-  align-items: center;
-  gap: 5px;
-  padding: 6px 12px;
-  background: #ffffff;
-  border: 1px solid var(--hf-border);
-  border-radius: 6px;
-  font-size: 12px;
-  font-weight: 500;
-  color: var(--hf-text-2);
-  cursor: pointer;
-  transition: all var(--hf-dur);
-}
-.top-btn:hover:not(:disabled) {
-  background: #f8fafc;
-  color: var(--hf-ink);
-  border-color: var(--hf-border-strong);
-}
-.top-btn:disabled {
-  opacity: 0.5;
-  cursor: not-allowed;
-}
-
-.accent-btn {
-  background: #f0fdfa;
-  border-color: #99f6e4;
-  color: #0f766e;
-}
-.accent-btn:hover {
-  background: #ccfbf1 !important;
-}
-
-/* ───────────────────────── 消息列表容器 ───────────────────────── */
-.messages-container {
-  flex: 1;
-  overflow-y: auto;
-  padding: 24px 20px 180px;
-}
-
-/* 空状态欢迎界面 */
-.welcome-container {
-  max-width: 820px;
-  margin: 40px auto 0;
-  display: flex;
-  flex-direction: column;
-  gap: 28px;
-}
-
-.welcome-hero {
-  text-align: center;
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  gap: 8px;
-}
-
-.welcome-spark {
-  width: 44px;
-  height: 44px;
-  border-radius: 12px;
-  background: linear-gradient(135deg, #155e75, #0ea5e9);
-  color: #ffffff;
-  display: flex;
-  align-items: center;
-  justify-content: center;
+.suggest-emoji {
   font-size: 20px;
-  font-weight: bold;
-  box-shadow: 0 4px 14px rgba(21, 94, 117, 0.25);
-  margin-bottom: 6px;
-}
-
-.welcome-title {
-  font-size: 24px;
-  font-weight: 800;
-  color: var(--hf-ink);
-  letter-spacing: -0.02em;
-}
-
-.welcome-desc {
-  font-size: 14px;
-  color: var(--hf-text-2);
-  max-width: 600px;
-  line-height: 1.6;
-}
-
-.scenarios-grid {
-  display: grid;
-  grid-template-columns: repeat(2, 1fr);
-  gap: 14px;
-}
-
-.scenario-card {
-  background: #ffffff;
-  border: 1px solid var(--hf-border);
-  border-radius: 12px;
-  padding: 16px 18px;
-  display: flex;
-  align-items: center;
-  gap: 14px;
-  cursor: pointer;
-  transition: all 0.2s cubic-bezier(0.16, 1, 0.3, 1);
-  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.02);
-}
-.scenario-card:hover {
-  border-color: #0891b2;
-  box-shadow: 0 6px 16px rgba(8, 145, 178, 0.12);
-  transform: translateY(-2px);
-}
-
-.sc-icon {
-  font-size: 26px;
   flex-shrink: 0;
 }
 
-.sc-content {
+.suggest-text {
   flex: 1;
-}
-
-.sc-title {
   font-size: 14px;
-  font-weight: 700;
-  color: var(--hf-ink);
-  margin: 0 0 4px;
+  color: #444;
+  font-weight: 500;
 }
 
-.sc-desc {
-  font-size: 12px;
-  color: var(--hf-text-3);
-  margin: 0;
-  line-height: 1.4;
-}
-
-.sc-arrow {
-  color: var(--hf-text-3);
-  font-size: 16px;
+.suggest-arrow {
+  color: #ccc;
+  flex-shrink: 0;
   transition: transform 0.2s;
 }
-.scenario-card:hover .sc-arrow {
-  color: #0891b2;
-  transform: translateX(4px);
+.suggest-card:hover .suggest-arrow {
+  color: #999;
+  transform: translateX(2px);
 }
 
-/* 消息流 */
-.message-stream {
-  max-width: 860px;
+/* ─── 消息流 ─── */
+.msg-list {
+  max-width: 720px;
   margin: 0 auto;
+  padding: 24px 24px 20px;
   display: flex;
   flex-direction: column;
-  gap: 22px;
+  gap: 24px;
 }
 
-.message-row {
+.msg-row {
   display: flex;
-  align-items: flex-start;
   gap: 12px;
+  align-items: flex-start;
 }
 
-.row-user {
+.msg-row.user {
   justify-content: flex-end;
 }
 
-.row-assistant {
+.msg-row.assistant {
   justify-content: flex-start;
 }
 
-.avatar-box {
-  width: 36px;
-  height: 36px;
-  border-radius: 10px;
-  display: flex;
-  align-items: center;
-  justify-content: center;
+.msg-avatar {
   flex-shrink: 0;
+  margin-top: 2px;
 }
 
-.ai-avatar-box {
-  background: linear-gradient(135deg, #0e7490, #155e75);
-  color: #ffffff;
-  box-shadow: 0 2px 6px rgba(14, 116, 144, 0.2);
-}
-
-.user-avatar-box {
-  background: #334155;
-  color: #ffffff;
-}
-
-.bubble-envelope {
-  max-width: 82%;
+.msg-content-wrap {
+  max-width: 80%;
   display: flex;
   flex-direction: column;
 }
 
-.msg-header-meta {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  margin-bottom: 6px;
-  padding-left: 2px;
+.msg-row.user .msg-content-wrap {
+  align-items: flex-end;
 }
 
-.role-name {
-  font-size: 12px;
-  font-weight: 700;
-  color: var(--hf-ink);
-}
-
-.source-badge {
-  display: inline-flex;
-  align-items: center;
-  gap: 4px;
-  font-size: 11px;
-  font-weight: 600;
-  padding: 1px 8px;
-  border-radius: 9999px;
-}
-
-.badge-real-ai {
-  background: #ecfdf5;
-  color: #047857;
-  border: 1px solid #a7f3d0;
-}
-
-.badge-fallback {
-  background: #f1f5f9;
-  color: #64748b;
-  border: 1px solid #cbd5e1;
-}
-
-.badge-dot {
-  width: 5px;
-  height: 5px;
-  border-radius: 50%;
-  background: currentColor;
-}
-
-.msg-time {
-  font-size: 11px;
-  color: var(--hf-text-3);
-}
-
-.bubble-card {
-  padding: 14px 18px;
-  border-radius: 14px;
-  position: relative;
+/* ─── 消息气泡 ─── */
+.msg-bubble {
+  padding: 12px 16px;
+  border-radius: 16px;
   font-size: 14px;
   line-height: 1.7;
+  word-break: break-word;
 }
 
-.bubble-user {
+.msg-bubble.user {
   background: #155e75;
-  color: #ffffff;
-  border-top-right-radius: 3px;
-  box-shadow: 0 3px 10px rgba(21, 94, 117, 0.25);
+  color: #fff;
+  border-bottom-right-radius: 4px;
+}
+
+.msg-bubble.assistant {
+  background: #fff;
+  color: #333;
+  border: 1px solid #f0f0f0;
+  border-bottom-left-radius: 4px;
 }
 
 .user-text {
   white-space: pre-wrap;
+}
+
+/* ─── Markdown 渲染 ─── */
+.md-body {
   word-break: break-word;
 }
 
-.user-meta-row {
-  display: flex;
-  justify-content: flex-end;
-  margin-top: 4px;
-  padding-right: 4px;
+.md-body :deep(p) {
+  margin: 0 0 8px;
 }
-
-.bubble-assistant {
-  background: #ffffff;
-  color: #1e293b;
-  border: 1px solid var(--hf-border);
-  border-top-left-radius: 3px;
-  box-shadow: 0 2px 10px rgba(0, 0, 0, 0.03);
-}
-
-/* Markdown 排版深度美化 */
-.assistant-markdown-body {
-  word-break: break-word;
-}
-
-.markdown-content :deep(p) {
-  margin: 0 0 10px;
-}
-.markdown-content :deep(p:last-child) {
+.md-body :deep(p:last-child) {
   margin-bottom: 0;
 }
 
-.markdown-content :deep(h1),
-.markdown-content :deep(h2),
-.markdown-content :deep(h3),
-.markdown-content :deep(h4) {
-  color: #0f172a;
-  font-weight: 700;
-  margin: 16px 0 8px;
+.md-body :deep(h1),
+.md-body :deep(h2),
+.md-body :deep(h3),
+.md-body :deep(h4) {
+  color: #1a1a1a;
+  font-weight: 600;
+  margin: 14px 0 6px;
   line-height: 1.3;
 }
+.md-body :deep(h1) { font-size: 18px; }
+.md-body :deep(h2) { font-size: 16px; }
+.md-body :deep(h3) { font-size: 15px; }
 
-.markdown-content :deep(strong) {
-  color: #0f172a;
-  font-weight: 700;
+.md-body :deep(strong) {
+  color: #1a1a1a;
+  font-weight: 600;
 }
 
-.markdown-content :deep(ul),
-.markdown-content :deep(ol) {
-  padding-left: 20px;
-  margin: 8px 0;
+.md-body :deep(ul),
+.md-body :deep(ol) {
+  padding-left: 18px;
+  margin: 6px 0;
 }
 
-.markdown-content :deep(li) {
-  margin: 4px 0;
+.md-body :deep(li) {
+  margin: 3px 0;
 }
 
-.markdown-content :deep(blockquote) {
-  border-left: 3px solid #0891b2;
-  background: #f0fdfa;
+.md-body :deep(blockquote) {
+  border-left: 3px solid #155e75;
+  background: #f8fafb;
   padding: 8px 14px;
-  margin: 10px 0;
+  margin: 8px 0;
   border-radius: 0 8px 8px 0;
-  color: #134e4a;
+  color: #555;
 }
 
-.markdown-content :deep(table) {
+.md-body :deep(table) {
   width: 100%;
   border-collapse: collapse;
-  margin: 12px 0;
+  margin: 10px 0;
   font-size: 13px;
 }
 
-.markdown-content :deep(th),
-.markdown-content :deep(td) {
-  padding: 8px 12px;
-  border: 1px solid #e2e8f0;
+.md-body :deep(th),
+.md-body :deep(td) {
+  padding: 7px 10px;
+  border: 1px solid #eee;
   text-align: left;
 }
 
-.markdown-content :deep(th) {
-  background: #f8fafc;
+.md-body :deep(th) {
+  background: #f9f9f9;
+  font-weight: 600;
+}
+
+.md-body :deep(code) {
+  background: #f5f5f5;
+  padding: 1px 5px;
+  border-radius: 4px;
+  font-size: 13px;
+  color: #c0392b;
+}
+
+/* ─── 流式光标 & 思考态 ─── */
+.cursor-blink {
+  display: inline;
+  color: #155e75;
   font-weight: 700;
+  animation: blink-kimi 0.9s infinite;
 }
 
-.typewriter-cursor {
-  display: inline-block;
-  color: #0891b2;
-  font-weight: 900;
-  animation: blink 0.8s infinite;
-}
-
-@keyframes blink {
+@keyframes blink-kimi {
   0%, 100% { opacity: 1; }
   50% { opacity: 0; }
 }
 
-.ai-thinking-state {
+/* ─── 思考过程 (Thinking Mode) 展开/折叠面板 ─── */
+.thinking-card {
+  background: #f8fafc;
+  border: 1px solid #e2e8f0;
+  border-radius: 12px;
+  margin-bottom: 12px;
+  overflow: hidden;
+  transition: all 0.2s ease;
+}
+
+.thinking-header {
+  width: 100%;
   display: flex;
   align-items: center;
   gap: 8px;
-  font-size: 13px;
-  color: var(--hf-text-2);
-  padding: 6px 0;
-}
-
-.spinner-dot {
-  width: 8px;
-  height: 8px;
-  border-radius: 50%;
-  background: #0891b2;
-  animation: thinkingPulse 1s infinite alternate;
-}
-
-@keyframes thinkingPulse {
-  from { transform: scale(0.8); opacity: 0.5; }
-  to { transform: scale(1.3); opacity: 1; }
-}
-
-/* 消息底部工具条 */
-.msg-tools-row {
-  display: flex;
-  align-items: center;
-  gap: 12px;
-  margin-top: 10px;
-  padding-top: 8px;
-  border-top: 1px solid #f1f5f9;
-}
-
-.tool-btn {
-  display: inline-flex;
-  align-items: center;
-  gap: 4px;
+  padding: 8px 12px;
   background: transparent;
   border: none;
-  font-size: 11px;
-  color: var(--hf-text-3);
   cursor: pointer;
-  padding: 2px 6px;
-  border-radius: 4px;
-  transition: all var(--hf-dur);
+  font-size: 12px;
+  color: #64748b;
+  text-align: left;
+  transition: background 0.15s;
 }
-.tool-btn:hover:not(:disabled) {
+.thinking-header:hover {
   background: #f1f5f9;
-  color: var(--hf-ink);
 }
-.tool-btn:disabled {
-  opacity: 0.5;
+
+.thinking-sparkle {
+  font-size: 11px;
+  color: #0891b2;
+}
+
+.thinking-title {
+  flex: 1;
+  font-weight: 600;
+  color: #475569;
+}
+
+.thinking-arrow {
+  color: #94a3b8;
+  transition: transform 0.2s ease;
+}
+.thinking-arrow.open {
+  transform: rotate(180deg);
+}
+
+.thinking-body {
+  padding: 10px 14px 12px;
+  font-size: 12px;
+  line-height: 1.6;
+  color: #64748b;
+  border-top: 1px solid #f1f5f9;
+  white-space: pre-wrap;
+  word-break: break-word;
+  font-family: inherit;
+  max-height: 260px;
+  overflow-y: auto;
+  background: #ffffff;
+}
+
+.thinking {
+  display: flex;
+  align-items: center;
+  gap: 3px;
+  color: #aaa;
+  font-size: 14px;
+  padding: 4px 0;
+}
+
+.thinking span {
+  display: inline-block;
+}
+
+.dot-1, .dot-2, .dot-3 {
+  font-size: 22px;
+  font-weight: 700;
+  animation: dot-bounce 1.2s infinite;
+}
+.dot-2 { animation-delay: 0.2s; }
+.dot-3 { animation-delay: 0.4s; }
+
+@keyframes dot-bounce {
+  0%, 60%, 100% { opacity: 0.3; transform: translateY(0); }
+  30% { opacity: 1; transform: translateY(-3px); }
+}
+
+.thinking-text {
+  margin-left: 6px;
+  font-size: 13px;
+  color: #bbb;
+}
+
+/* ─── 消息操作 ─── */
+.msg-actions {
+  display: flex;
+  gap: 4px;
+  margin-top: 6px;
+  opacity: 0;
+  transition: opacity 0.15s;
+}
+
+.msg-row:hover .msg-actions {
+  opacity: 1;
+}
+
+.action-btn {
+  padding: 3px 10px;
+  background: transparent;
+  border: none;
+  font-size: 12px;
+  color: #bbb;
+  cursor: pointer;
+  border-radius: 4px;
+  transition: all 0.15s;
+}
+.action-btn:hover:not(:disabled) {
+  background: #f5f5f5;
+  color: #666;
+}
+.action-btn:disabled {
+  opacity: 0.4;
   cursor: not-allowed;
 }
 
-/* ───────────────────────── 底部悬浮输入 Dock ───────────────────────── */
-.composer-dock-container {
+/* ─── 底部输入区 ─── */
+.kimi-footer {
   position: absolute;
   bottom: 0;
   left: 0;
   right: 0;
-  padding: 0 20px 16px;
-  background: linear-gradient(to top, rgba(248, 250, 252, 0.95) 80%, rgba(248, 250, 252, 0) 100%);
+  padding: 0 24px 20px;
+  background: linear-gradient(to top, #fafafa 85%, transparent 100%);
   pointer-events: none;
 }
 
-.composer-dock-inner {
-  max-width: 860px;
+.input-wrap {
+  max-width: 720px;
   margin: 0 auto;
   pointer-events: auto;
+}
+
+.input-box {
   display: flex;
-  flex-direction: column;
+  align-items: flex-end;
   gap: 8px;
+  background: #fff;
+  border: 1px solid #e5e5e5;
+  border-radius: 16px;
+  padding: 10px 12px 10px 18px;
+  box-shadow: 0 2px 12px rgba(0,0,0,0.04);
+  transition: all 0.2s;
 }
 
-/* 猜您想问滚动条 */
-.chips-bar {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  overflow: hidden;
+.input-box:focus-within {
+  border-color: #155e75;
+  box-shadow: 0 4px 20px rgba(21, 94, 117, 0.1);
 }
 
-.chips-label {
-  font-size: 12px;
-  color: var(--hf-text-3);
-  font-weight: 600;
-  white-space: nowrap;
-}
-
-.chips-scroll {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  overflow-x: auto;
-  scrollbar-width: none;
-}
-.chips-scroll::-webkit-scrollbar {
-  display: none;
-}
-
-.chip-pill {
-  padding: 5px 12px;
-  background: #ffffff;
-  border: 1px solid var(--hf-border);
-  border-radius: 9999px;
-  font-size: 12px;
-  color: var(--hf-text-2);
-  white-space: nowrap;
-  cursor: pointer;
-  transition: all var(--hf-dur);
-  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.02);
-}
-.chip-pill:hover:not(:disabled) {
-  background: #f0fdfa;
-  border-color: #5eead4;
-  color: #0f766e;
-}
-
-/* 输入框卡片 */
-.input-card {
-  background: rgba(255, 255, 255, 0.98);
-  border: 1px solid var(--hf-border-strong);
-  border-radius: 14px;
-  box-shadow: 0 6px 20px rgba(15, 23, 42, 0.08);
-  padding: 10px 14px 8px;
-  display: flex;
-  flex-direction: column;
-  gap: 6px;
-  transition: border-color var(--hf-dur), box-shadow var(--hf-dur);
-}
-
-.input-card:focus-within {
-  border-color: #0891b2;
-  box-shadow: 0 8px 26px rgba(8, 145, 178, 0.15);
-}
-
-.dock-textarea {
-  width: 100%;
+.input-area {
+  flex: 1;
   border: none;
   outline: none;
   background: transparent;
   font-size: 14px;
-  line-height: 1.6;
-  color: var(--hf-ink);
+  line-height: 1.5;
+  color: #333;
   resize: none;
   font-family: inherit;
-  max-height: 140px;
+  max-height: 120px;
+  min-height: 22px;
 }
-.dock-textarea::placeholder {
-  color: #94a3b8;
+.input-area::placeholder {
+  color: #bbb;
 }
 
-.input-controls-row {
+.input-actions {
+  flex-shrink: 0;
   display: flex;
   align-items: center;
-  justify-content: space-between;
-}
-
-.control-left {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-}
-
-.model-badge {
-  display: inline-flex;
-  align-items: center;
-  gap: 4px;
-  padding: 2px 8px;
-  background: #f1f5f9;
-  border-radius: 6px;
-  font-size: 11px;
-  font-weight: 600;
-  color: var(--hf-text-2);
-}
-
-.model-spark {
-  color: #0891b2;
-}
-
-.hint-text {
-  font-size: 11px;
-  color: var(--hf-text-3);
-}
-
-.control-right {
-  display: flex;
-  align-items: center;
-  gap: 8px;
 }
 
 .send-btn {
-  display: inline-flex;
+  width: 34px;
+  height: 34px;
+  display: flex;
   align-items: center;
-  gap: 6px;
-  padding: 8px 16px;
+  justify-content: center;
   background: #155e75;
-  color: #ffffff;
+  color: #fff;
   border: none;
-  border-radius: 8px;
-  font-size: 13px;
-  font-weight: 600;
+  border-radius: 10px;
   cursor: pointer;
-  transition: all var(--hf-dur);
-  box-shadow: 0 2px 6px rgba(21, 94, 117, 0.25);
+  transition: all 0.15s;
 }
 .send-btn:hover:not(:disabled) {
   background: #0e7490;
-  transform: translateY(-1px);
 }
 .send-btn:disabled {
-  background: #cbd5e1;
-  color: #94a3b8;
+  background: #e0e0e0;
+  color: #aaa;
   cursor: not-allowed;
-  box-shadow: none;
 }
 
 .stop-btn {
-  display: inline-flex;
+  width: 34px;
+  height: 34px;
+  display: flex;
   align-items: center;
-  gap: 6px;
-  padding: 8px 16px;
+  justify-content: center;
   background: #ef4444;
-  color: #ffffff;
+  color: #fff;
   border: none;
-  border-radius: 8px;
-  font-size: 13px;
-  font-weight: 600;
+  border-radius: 10px;
   cursor: pointer;
-  transition: all var(--hf-dur);
+  transition: all 0.15s;
 }
 .stop-btn:hover {
   background: #dc2626;
 }
 
-.stop-icon {
-  font-size: 10px;
-}
-
-.compliance-footer {
+.footer-hint {
   text-align: center;
-  font-size: 11px;
-  color: var(--hf-text-3);
-  padding-top: 2px;
+  font-size: 12px;
+  color: #ccc;
+  margin: 8px 0 0;
 }
 
-/* ───────────────────────── 侧拉画像抽屉 ───────────────────────── */
-.drawer-body {
-  padding: 0 8px;
+/* ─── 偏好抽屉 ─── */
+.pref-body {
+  padding: 0 4px;
   display: flex;
   flex-direction: column;
-  gap: 20px;
+  gap: 18px;
 }
 
-.drawer-desc {
+.pref-desc {
   font-size: 13px;
-  color: var(--hf-text-2);
+  color: #999;
   line-height: 1.5;
   margin: 0;
-  padding-bottom: 8px;
-  border-bottom: 1px solid var(--hf-border);
+  padding-bottom: 12px;
+  border-bottom: 1px solid #f0f0f0;
 }
 
-.drawer-form-item {
+.pref-item {
   display: flex;
   flex-direction: column;
   gap: 8px;
 }
 
-.drawer-form-item label {
+.pref-item label {
   font-size: 13px;
   font-weight: 600;
-  color: var(--hf-ink);
+  color: #444;
 }
 
-.budget-dual-row {
+.budget-row {
   display: flex;
   align-items: center;
   justify-content: space-between;
 }
 
-.sep {
-  color: var(--hf-text-3);
-  font-weight: bold;
+.budget-sep {
+  color: #ccc;
+  font-weight: 500;
 }
 
-.drawer-actions {
-  margin-top: 12px;
-}
-
-.w-full {
-  width: 100% !important;
-}
-
-/* 响应式适配 */
-@media (max-width: 900px) {
-  .ai-sidebar {
-    display: none;
-  }
-  .scenarios-grid {
+/* ─── 响应式 ─── */
+@media (max-width: 640px) {
+  .suggest-grid {
     grid-template-columns: 1fr;
+  }
+  .msg-list {
+    padding: 16px 16px 20px;
+  }
+  .msg-content-wrap {
+    max-width: 88%;
+  }
+  .welcome-hi {
+    font-size: 22px;
   }
 }
 </style>

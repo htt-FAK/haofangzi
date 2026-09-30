@@ -42,7 +42,8 @@ public class AiService {
     private final EvalMapper evals;
     private final AiLogMapper callLogs;
 
-    private static final int MODEL_CONTEXT = 12;
+    // Qwen3.5-4B 原生支持 256K 上下文 (可扩展至 100 万 tokens)，深度保留多轮对话历史
+    private static final int MODEL_CONTEXT = 40;
     private static final int PAGE_HISTORY = 200;
 
     public List<Map<String, Object>> history(long userId) {
@@ -56,16 +57,23 @@ public class AiService {
     }
 
     /**
-     * 多轮顾问。先读最近 12 条再写入本轮，避免把当前问题重复送进模型。
-     * @return {@code ai} 或 {@code fallback}
+     * 多轮顾问。默认回调。
      */
     public String chat(long userId, String question, Consumer<String> onToken) {
+        return chat(userId, question, onToken, null);
+    }
+
+    /**
+     * 多轮顾问。支持 Qwen3.5-4B 思考模式（Thinking Mode）透传。
+     * @return {@code ai} 或 {@code fallback}
+     */
+    public String chat(long userId, String question, Consumer<String> onToken, Consumer<String> onThinking) {
         if (question == null || question.isBlank()) {
             throw new BizException(ErrorCode.PARAM_INVALID, "请输入问题");
         }
         String q = question.strip();
-        if (q.length() > 800) {
-            q = q.substring(0, 800);
+        if (q.length() > 4000) {
+            q = q.substring(0, 4000);
         }
         List<Map<String, Object>> prior = new ArrayList<>(chats.latest(userId, MODEL_CONTEXT));
         Collections.reverse(prior);
@@ -89,14 +97,22 @@ public class AiService {
         long t0 = System.currentTimeMillis();
         llm.streamText(messages, piece -> {
             acc.append(piece);
-            onToken.accept(piece);
+            if (onToken != null) {
+                onToken.accept(piece);
+            }
+        }, thinkingPiece -> {
+            if (onThinking != null) {
+                onThinking.accept(thinkingPiece);
+            }
         });
         long latency = System.currentTimeMillis() - t0;
         String source;
         String answer;
         if (acc.isEmpty()) {
             answer = templateChat(q, card);
-            onToken.accept(answer);
+            if (onToken != null) {
+                onToken.accept(answer);
+            }
             source = "fallback";
         } else {
             answer = acc.toString();
@@ -108,12 +124,13 @@ public class AiService {
     }
 
     private String chatSystem(String profile, String card) {
-        return "你是肇庆好房子的选房顾问，用简体中文回答，语气像面对面聊天。"
-                + "禁止编造分数、购房资格、贷款和税费。分数只能引用本次附带的规则引擎结果，没有分数就说还没评估。"
-                + "不要输出 JSON。回答尽量短，两三段即可。"
-                + "追问时以上面的对话为准。画像里的 FAMILY_3 这类是规则模板代码，不要当成人数。"
-                + "画像：" + profile
-                + "。已有户型分数：" + (card.isBlank() ? "暂无" : card);
+        return "你是肇庆好房子的专属智能选房顾问，由通义千问 Qwen3.5-4B（原生多模态、256K 上下文、门控 Delta 混合架构）驱动。"
+                + "请用亲切、专业、客观的简体中文回答，语气自然得体，像面对面沟通。"
+                + "守则：严禁编造购房资格、贷款利率、税费和投资升值承诺。分数只能严格引用本次附带的规则引擎评估数据，没有分数就说明暂未评估。"
+                + "排版要求：结构清晰，善用加粗与列表突出户型采光日照、通风、动线及得房率等关键指标。"
+                + "追问时以上方上下文为准。画像代码 FAMILY_3 这类为家庭结构枚举（如三口之家），不要当成人数。"
+                + "买家偏好画像：" + profile
+                + "。在售重点户型评分依据：" + (card.isBlank() ? "暂无" : card);
     }
 
     private String profileLine(Long userId) {
@@ -124,29 +141,40 @@ public class AiService {
         if (me == null) {
             return "未填写";
         }
-        return "预算 " + me.getBudgetMin() + "–" + me.getBudgetMax()
-                + "，家庭 " + (me.getFamilyStructure() == null ? "未填" : me.getFamilyStructure())
-                + "，居室 " + (me.getMustRooms() == null ? "未填" : me.getMustRooms());
+        return "预算 " + (me.getBudgetMin() == null ? "不限" : me.getBudgetMin() + "元")
+                + "–" + (me.getBudgetMax() == null ? "不限" : me.getBudgetMax() + "元")
+                + "，家庭结构 " + (me.getFamilyStructure() == null ? "未填" : me.getFamilyStructure())
+                + "，期望居室 " + (me.getMustRooms() == null ? "未填" : me.getMustRooms() + "房");
     }
 
     private String scoreCard() {
         StringBuilder sb = new StringBuilder();
         int n = 0;
-        for (HouseType t : catalog.houseTypes(null, null, null, null, null, null, 0, 7)) {
-            if (n >= 7) {
+        for (HouseType t : catalog.houseTypes(null, null, null, null, null, null, 0, 15)) {
+            if (n >= 12) {
                 break;
             }
             Evaluation e = evals.latestEvaluation(t.getId(), "GENERAL");
-            sb.append(t.getName() == null ? ("户型" + t.getId()) : t.getName()).append(' ');
-            if (e != null && e.getTotalScore() != null) {
-                sb.append(e.getTotalScore().stripTrailingZeros().toPlainString()).append("分");
-            } else {
-                sb.append("未评");
+            sb.append(t.getName() == null ? ("户型" + t.getId()) : t.getName());
+            if (t.getGfa() != null) {
+                sb.append(' ').append(t.getGfa().stripTrailingZeros().toPlainString()).append("㎡");
             }
             if (t.getRooms() != null) {
                 sb.append(' ').append(t.getRooms()).append("居");
             }
-            sb.append('；');
+            if (t.getOrientation() != null) {
+                sb.append(' ').append(t.getOrientation()).append("向");
+            }
+            if (e != null && e.getTotalScore() != null) {
+                sb.append("（得分:").append(e.getTotalScore().stripTrailingZeros().toPlainString()).append("分");
+                if (e.getLevel() != null) {
+                    sb.append(",").append(e.getLevel());
+                }
+                sb.append("）");
+            } else {
+                sb.append("（未评）");
+            }
+            sb.append("；");
             n++;
         }
         return sb.toString();
